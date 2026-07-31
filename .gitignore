@@ -244,3 +244,10 @@ stage_pilot_inputs.sh
 run_one_opus.sh
 run_gemini_batch.sh
 
+eval_outputs-*/
+eval_outputs_*/
+proxy/
+tobeqc/
+watch_eval.py
+*.bak.*
+*.bak_*
