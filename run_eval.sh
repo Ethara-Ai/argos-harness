@@ -35,7 +35,7 @@ K=1
 LANG_OVERRIDE=""
 LLM_CONFIG=""
 SPLIT="train"
-MAX_ITER=300
+MAX_ITER=1000
 NUM_WORKERS=1
 MAX_RETRIES=3
 WORKSPACE="docker"
@@ -102,7 +102,7 @@ Runs:
   --start-run N             Resume each dataset from run N              [default: 1]
 
 Inference:
-  --max-iter N              Max agent iterations per instance           [default: 300]
+  --max-iter N              Max agent iterations per instance           [default: 1000]
   --num-workers N           Inference workers within a dataset          [default: 1]
   --max-retries N           Retries for crashed instances               [default: 3]
   --workspace TYPE          docker or remote                            [default: docker]

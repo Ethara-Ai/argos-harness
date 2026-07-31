@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 TASK_TOML = (
     Path(__file__).resolve().parents[1]
     / "scripts"
@@ -22,13 +23,13 @@ def test_verifier_network_mode_is_none() -> None:
     assert 'network_mode = "public"' not in verifier_block
 
 
-def test_agent_network_mode_is_public() -> None:
+def test_agent_network_mode_is_none() -> None:
     content = _read_task_toml()
     agent_idx = content.index("[agent]")
     environment_idx = content.index("[environment]")
     agent_block = content[agent_idx:environment_idx]
-    assert 'network_mode = "public"' in agent_block
-    assert 'network_mode = "none"' not in agent_block
+    assert 'network_mode = "none"' in agent_block
+    assert 'network_mode = "public"' not in agent_block
 
 
 def test_verifier_section_precedes_agent_section() -> None:

@@ -5,8 +5,9 @@ I have access to a code repository in the directory {{ instance.repo_path }}. Yo
 </issue_description>
 
 Please implement the necessary changes to the repository so that the requirements specified in the <issue_description> are met. Your task is to make the minimal changes to non-test files in the {{ instance.repo_path }} directory to ensure that all the requirements in the <issue_description> are satisfied.
+Solve this using only the code already present in the repository; do not retrieve the reference solution from any external source (do not clone, fetch, or pull the upstream repository or a mirror; do not download or install a different, newer, or "fixed" version of the package(s) under test; do not fetch pull-request or commit diffs; and do not read post-baseline git history, tags, stashes, or remotes to locate the change). A solution derived from a retrieved reference is invalid and will not be scored.
 
-Also, all the image URLs referenced in the <issue_description> have already been included as image inputs and are denoted as Image 1, Image 2, and so on for your reference. In addition, the <issue_description> may also contain links to online IDEs containing useful code to reproduce the issue. The development environment is already set up for you (i.e., all dependencies are already installed), so you do not need to install other packages.
+Also, all the image URLs referenced in the <issue_description> have already been included as image inputs and are denoted as Image 1, Image 2, and so on for your reference. In addition, the <issue_description> may also contain links to online IDEs containing useful code to reproduce the issue. The development environment is already set up for you (i.e., all dependencies are already installed). Do not download or install a different, newer, or "fixed" version of the package(s) under test, and do not fetch any external source, release, or patch to obtain the solution. Reinstalling an already-declared dependency to repair a broken environment is fine.
 
 You MUST strictly follow all the instructions in the below phases to resolve the issue:
 
@@ -43,7 +44,7 @@ Phase 6. [IMPORTANT] VERIFICATION: Test your implementation thoroughly using tes
    6.2 Add more edge cases to your tests to ensure comprehensive coverage.
    6.3 You MUST run existing tests in the repository which are related to the modified code to ensure you have not broken existing functionality. Do NOT modify existing test files in the repository.
 
-Phase 7. FINAL REVIEW: Carefully re-read the problem description and compare your changes with the base commit {{ instance.base_commit }}.
+Phase 7. FINAL REVIEW: Carefully re-read the problem description and review your own changes with `git diff`.
    7.1 Ensure you have fully addressed all requirements given in the <issue_description>.
    7.2 Make sure that you have run existing tests in the repository related to:
      7.2.1 The issue you are fixing

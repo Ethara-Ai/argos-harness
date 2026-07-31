@@ -10,8 +10,9 @@ I've uploaded a python code repository in the directory {{ workspace_dir_name }}
 
 Can you help me add the new features to the repository based on the changes in the <doc_change>?
 I've already taken care of all changes to any of the test files described in the <doc_change>. This means you DON'T have to modify the testing logic or any of the tests in any way!
-Also the development Python environment is already set up for you (i.e., all dependencies already installed), so you don't need to install other packages.
+Also the development Python environment is already set up for you (i.e., all dependencies are already installed). Do not download or install a different, newer, or "fixed" version of the package(s) under test, and do not fetch any external source, release, or patch to obtain the solution. Reinstalling an already-declared dependency to repair a broken environment is fine.
 Your task is to make the minimal changes to non-test files in the /workspace/{{ workspace_dir_name }} directory to implement the new features required by the documentation updates.
+Solve this using only the code already present in the repository; do not retrieve the reference solution from any external source (do not clone, fetch, or pull the upstream repository or a mirror; do not download or install a different, newer, or "fixed" version of the package(s) under test; do not fetch pull-request or commit diffs; and do not read post-baseline git history, tags, stashes, or remotes to locate the change). A solution derived from a retrieved reference is invalid and will not be scored.
 
 Follow these phases to resolve the issue:
 
@@ -22,9 +23,9 @@ Phase 1. READING: read the requirements and reword it in clearer terms
    1.4 Specify functional scope and expected behavior of new features.
    1.5 Hightlight any best practices to take into account when developing and testing the new feature.
 
-Phase 2. RUNNING: install and run the functionality in the repository to validate the new features
+Phase 2. RUNNING: run the functionality in the repository to validate the new features
    2.1 Follow the readme.
-   2.2 Install the environment and anything needed.
+   2.2 The environment and dependencies are already installed; if something reports missing, repair it using only locally available packages.
    2.2 Iterate and figure out how to validate the newly added features.
 
 Phase 3. EXPLORATION: find the files related to the new features and possible implementation solutions
@@ -54,7 +55,7 @@ Phase 7. VERIFICATION: Test your new feature thoroughly.
    7.2 Add edge cases to your test script to ensure comprehensive coverage of the new feature.
    7.3 Run existing tests related to the modified code to ensure you haven't broken anything.
 
-Phase 8. FINAL REVIEW: Carefully re-read the feature requirements and compare your changes with the base commit {{ instance.base_commit }}
+Phase 8. FINAL REVIEW: Carefully re-read the feature requirements and review your own changes with `git diff`
    8.1 Ensure you've fully implemented all required features.
    8.2 Run any tests in the repository related to:
      8.2.1 The new features you are adding

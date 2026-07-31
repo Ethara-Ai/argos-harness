@@ -3,6 +3,7 @@ import os
 import platform
 from pathlib import Path
 from typing import List, cast
+from urllib.parse import urlparse
 
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
@@ -313,37 +314,63 @@ class MultiSWEBenchEvaluation(Evaluation):
                     "VERTEXAI_PROJECT",
                     "VERTEXAI_LOCATION",
                 ]
-            # Anti-reward-hacking: forward task repo/package targets so the
-            # in-container egress filter can 403 lookups of the task's own
-            # repo/package. EGRESS_FILTER_DISABLE=1 (host env) is the escape hatch.
-            block_forward_env: list[str] = []
-            _task_repo = str(instance.data.get("repo", "") or "").strip()
-            _task_org = str(instance.data.get("org", "") or "").strip()
-            if "/" in _task_repo:
-                _org_part, _repo_part = _task_repo.split("/", 1)
-                if not _task_org:
-                    _task_org = _org_part.strip()
-                _task_repo = _repo_part.strip()
-            if _task_org and _task_repo:
-                os.environ["TASK_BLOCK_ORG"] = _task_org
-                os.environ["TASK_BLOCK_REPO"] = _task_repo
-                os.environ["TASK_BLOCK_PACKAGE"] = _task_repo.lower()
-                block_forward_env = [
-                    "TASK_BLOCK_ORG",
-                    "TASK_BLOCK_REPO",
-                    "TASK_BLOCK_PACKAGE",
-                ]
+            # Escape hatch for the in-container egress filter (mitmproxy). When it
+            # cannot bind, the entrypoint still exports HTTPS_PROXY at a dead proxy,
+            # which blocks ALL egress (incl. Vertex auth). Forward the disable flag.
             egress_forward_env: list[str] = []
             if os.getenv("EGRESS_FILTER_DISABLE"):
                 egress_forward_env = ["EGRESS_FILTER_DISABLE"]
+            # LLM endpoint carve-out under the full egress block: a plain-HTTP
+            # base_url (e.g. the host-side claude-code proxy on the docker
+            # gateway) is not covered by the mitmproxy --ignore-hosts SaaS list
+            # and would be denied. Forward its host/port so the entrypoint allows
+            # exactly that one destination directly (iptables + NO_PROXY). HTTPS
+            # LLM endpoints are handled by --ignore-hosts and need no carve-out.
+            llm_direct_forward_env: list[str] = []
+            _llm_base = self.metadata.llm.base_url
+            if _llm_base and _llm_base.startswith("http://"):
+                _parsed = urlparse(_llm_base)
+                if _parsed.hostname:
+                    os.environ["LLM_DIRECT_HOST"] = _parsed.hostname
+                    os.environ["LLM_DIRECT_PORT"] = str(_parsed.port or 80)
+                    llm_direct_forward_env = ["LLM_DIRECT_HOST", "LLM_DIRECT_PORT"]
+            # Anthropic OAuth injection via in-container mitmproxy (opt-in via
+            # ANTHROPIC_OAUTH_TOKEN). Mounts a modified egress-filter addon that
+            # allows api.anthropic.com and injects Bearer auth, replacing the dummy
+            # x-api-key sent by LiteLLM. Anti-cheat filter stays fully active.
+            oauth_volumes: list[str] = []
+            oauth_forward_env: list[str] = []
+            _oauth_token = os.getenv("ANTHROPIC_OAUTH_TOKEN")
+            if _oauth_token:
+                _egress_filter_override = str(
+                    Path(__file__).parent.parent.parent
+                    / "proxy"
+                    / "egress-filter-oauth.py"
+                )
+                if os.path.isfile(_egress_filter_override):
+                    oauth_volumes = [
+                        f"{_egress_filter_override}:/usr/local/bin/egress-filter.py:ro"
+                    ]
+                    # Bind-mount host credentials file so the egress filter can
+                    # re-read the token on each request (picks up auto-refreshes).
+                    _host_creds = Path.home() / ".claude" / ".credentials.json"
+                    if _host_creds.is_file():
+                        oauth_volumes.append(f"{_host_creds}:/etc/claude_creds.json:ro")
+                    oauth_forward_env = ["ANTHROPIC_OAUTH_TOKEN"]
+                else:
+                    logger.warning(
+                        "ANTHROPIC_OAUTH_TOKEN set but %s not found; OAuth injection disabled",
+                        _egress_filter_override,
+                    )
             workspace = DockerWorkspace(
                 server_image=agent_server_image,
                 working_dir="/workspace",
                 forward_env=(forward_env or [])
                 + sa_forward_env
-                + block_forward_env
-                + egress_forward_env,
-                volumes=sa_volumes,
+                + egress_forward_env
+                + llm_direct_forward_env
+                + oauth_forward_env,
+                volumes=sa_volumes + oauth_volumes,
                 platform=docker_platform,
             )
         elif self.metadata.workspace_type == "remote":
@@ -437,13 +464,14 @@ class MultiSWEBenchEvaluation(Evaluation):
             callbacks=[persist_callback],
             max_iteration_per_run=self.metadata.max_iterations,
             delete_on_close=True,
+            stuck_detection=False,
         )
 
         logger.info("repo_path: %s", repo_path)
 
         # Find the repository location dynamically by looking for .git directories
         find_repo = workspace.execute_command(
-            "find /home -name '.git' -type d 2>/dev/null | head -1 | xargs dirname"
+            "find -L /home -name node_modules -prune -o -name '.git' -type d -print 2>/dev/null | head -1 | xargs dirname"
         )
         if find_repo.exit_code != 0 or not find_repo.stdout.strip():
             # Fallback to /testbed if no git repo found in /home
@@ -452,10 +480,16 @@ class MultiSWEBenchEvaluation(Evaluation):
             source_repo_path = find_repo.stdout.strip()
 
         logger.info("source_repo_path: %s", source_repo_path)
+        # `cp -r` aborts on the first unreadable file; Gradle/Java images leave
+        # root-owned, mode-600 build caches (e.g. .gradle/configuration-cache)
+        # that the non-root agent user cannot read. tar --ignore-failed-read
+        # skips those regenerable caches; the pipe's exit code is the extract
+        # side, so a genuine write failure still surfaces.
         cp_testebed_repo = workspace.execute_command(
-            f"mkdir -p {repo_path} && cd {source_repo_path} && "
-            f"tar -cf - --ignore-failed-read . | "
-            f"(cd {repo_path} && tar -xf -)"
+            f"mkdir -p {repo_path} ; "
+            f"tar -C {source_repo_path} --ignore-failed-read -cf - . "
+            f"| tar -C {repo_path} -xf -",
+            timeout=600,
         )
         if cp_testebed_repo.exit_code != 0:
             raise RuntimeError(f"cp_testebed_repo failed: {cp_testebed_repo.stderr}")

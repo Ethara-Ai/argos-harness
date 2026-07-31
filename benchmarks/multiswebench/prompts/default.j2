@@ -11,9 +11,10 @@ Can you help me implement the necessary changes to the repository so that the re
 
 I've already taken care of all changes to any of the test files described in the <issue_description>. This means you MUST NOT modify the testing logic or any of the tests in any way!
 
-Also the development {{ language|title }} environment is already set up for you (i.e., all dependencies already installed), so you don't need to install other packages.
+Also the development {{ language|title }} environment is already set up for you (i.e., all dependencies are already installed). Do not download or install a different, newer, or "fixed" version of the package(s) under test, and do not fetch any external source, release, or patch to obtain the solution. Reinstalling an already-declared dependency to repair a broken environment is fine.
 
 Your task is to make the minimal changes to non-test files in the /workspace directory to ensure the <issue_description> is satisfied.
+Solve this using only the code already present in the repository; do not retrieve the reference solution from any external source (do not clone, fetch, or pull the upstream repository or a mirror; do not download or install a different, newer, or "fixed" version of the package(s) under test; do not fetch pull-request or commit diffs; and do not read post-baseline git history, tags, stashes, or remotes to locate the change). A solution derived from a retrieved reference is invalid and will not be scored.
 
 Follow these steps to resolve the issue:
 1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
@@ -40,7 +41,7 @@ Follow these steps to resolve the issue:
 4. Rerun your reproduce script{% if language == 'java' %} or class{% endif %} and confirm that the error is fixed!
 5. Think about edgecases, add comprehensive tests for them in your reproduce {% if language == 'java' %}class or {% endif %}script, and run them to make sure your fix handles {% if language == 'java' %}these cases{% else %}them{% endif %} as well.
 {% if instance.base_commit %}
-6. Once you are done with the initial implementation, please carefully re-read the problem description and check the difference between the current code and the base commit {{ instance.base_commit }}. Do you think that the issue has been completely and comprehensively solved? Write tests to check the correctness of the solution, specifically focusing on tests that may point out any remaining problems that are not yet solved. Run all of the tests in the repo and check if any of them fail, and if they do fix the code. Repeat this process of carefully reading the problem description and current implementation, testing, and fixing any problems until you are confident that the current implementation is correct. Find and run any tests in the repo that are related to:
+6. Once you are done with the initial implementation, please carefully re-read the problem description and review your own changes with `git diff`. Do you think that the issue has been completely and comprehensively solved? Write tests to check the correctness of the solution, specifically focusing on tests that may point out any remaining problems that are not yet solved. Run all of the tests in the repo and check if any of them fail, and if they do fix the code. Repeat this process of carefully reading the problem description and current implementation, testing, and fixing any problems until you are confident that the current implementation is correct. Find and run any tests in the repo that are related to:
    - The issue you are fixing
    - The files you modified
    {% if language == 'java' %}
