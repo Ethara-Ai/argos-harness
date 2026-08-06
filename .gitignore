@@ -211,8 +211,9 @@ workspace/
 .vscode/
 
 # LLM configuration directory (contains API keys and sensitive configs)
-.llm_config/
+.llm_config/*
 !.llm_config/example.json
+!.llm_config/claude-code.json
 
 # Evaluation outputs
 eval_outputs/
@@ -246,8 +247,11 @@ run_gemini_batch.sh
 
 eval_outputs-*/
 eval_outputs_*/
-proxy/
 tobeqc/
+
+# Local datasets and harbor-converted outputs (deliverables, not source)
+dataset/
+harbor_workspace*/
 watch_eval.py
 *.bak.*
 *.bak_*

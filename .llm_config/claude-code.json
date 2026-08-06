@@ -1,0 +1,12 @@
+{
+  "_auth_mode": "claude-oauth-subscription (via proxy/claude_code_bridge, not a metered API key)",
+  "usage_id": "claude-code-oauth",
+  "model": "anthropic/claude-opus-4-8",
+  "base_url": "http://host.docker.internal:8765",
+  "api_key": "sk-ant-oauth-bridge-stub",
+  "caching_prompt": true,
+  "force_adaptive_thinking": true,
+  "temperature": 1.0,
+  "num_retries": 5,
+  "timeout": 600
+}
