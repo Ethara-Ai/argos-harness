@@ -81,7 +81,9 @@ Run the full eval pipeline over many datasets, --parallel at a time.
 Required:
   --llm-config PATH         LLM JSON config
   Input (repeatable / combinable):
-    --dataset FILE          A task-instance JSONL (may be given multiple times)
+    --dataset FILE          A task-instance JSONL (may be given multiple times).
+                            A file holding SEVERAL instances is split into
+                            per-instance runs automatically.
     --dataset-dir DIR       Every *.jsonl in DIR
 
 Image source (one required, applies to all datasets):
@@ -294,6 +296,24 @@ LLM_CONFIG="$(cd "$(dirname "$LLM_CONFIG")" && pwd)/$(basename "$LLM_CONFIG")"
 [[ -n "$DOCKERFILE" ]] && DOCKERFILE="$(cd "$(dirname "$DOCKERFILE")" && pwd)/$(basename "$DOCKERFILE")"
 mkdir -p "$OUTPUT_BASE"
 OUTPUT_BASE="$(cd "$OUTPUT_BASE" && pwd)"
+
+# Multi-instance dataset files are split into per-instance files up front:
+# everything downstream (tag, agent-image pre-build, harbor, publish) is
+# keyed on one record per file. Single-record files pass through untouched.
+SPLIT_BASE="${OUTPUT_BASE}/_split"
+EXPANDED_DATASETS=()
+for ds in "${DATASETS[@]}"; do
+    [[ ! -f "$ds" ]] && { echo "ERROR: dataset not found: $ds"; exit 1; }
+    split_out="$(python3 "${SCRIPT_DIR}/benchmarks/multiswebench/scripts/data/split_dataset.py" \
+        "$ds" --out-base "$SPLIT_BASE")" || {
+        echo "ERROR: invalid dataset file: $ds (see message above)"; exit 1; }
+    while IFS= read -r part; do
+        [[ -z "$part" ]] && continue
+        [[ ! -f "$part" ]] && { echo "ERROR: split produced missing file: $part"; exit 1; }
+        EXPANDED_DATASETS+=("$part")
+    done <<< "$split_out"
+done
+DATASETS=("${EXPANDED_DATASETS[@]}")
 
 # Verify datasets exist + guard against collisions on the two shared resources:
 #   1. basename -> the benchmarks/multiswebench/data/<basename> staging copy

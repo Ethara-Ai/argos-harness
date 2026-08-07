@@ -46,3 +46,10 @@ def _install_missing_repo_shim() -> None:
 
 
 _install_missing_repo_shim()
+
+
+# The committed milo bundle fixtures carry their own emitted tests/test_output.py
+# (run explicitly by test_milo_pilot_regression with --import-mode=importlib);
+# their uuid-named parent dirs are not importable module paths, so keep the
+# whole fixture tree out of normal collection.
+collect_ignore_glob = ["fixtures/*"]
