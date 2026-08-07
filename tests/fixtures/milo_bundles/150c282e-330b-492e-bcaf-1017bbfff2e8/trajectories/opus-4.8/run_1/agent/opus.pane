@@ -1,0 +1,200 @@
++        func_name = "RAND" if dialect == "mysql" else "RANDOM"
++        self.query = self.query.orderby(PypikaFunction(func_name))
++
+     def resolve_ordering(
+         self,
+         model: "Type[Model]",
+@@ -188,6 +194,9 @@ class AwaitableQuery(Generic[MODEL]):
+
+         for ordering in orderings:
+             field_name = ordering[0]
++            if field_name == "?":
++                self._resolve_random_ordering(model)
++                continue
+             if field_name in model._meta.fetch_fields:
+                 raise FieldError(
+                     "Filtering by relation is not possible. Filter by nested field of related model"
+@@ -406,6 +415,10 @@ class QuerySet(AwaitableQuery[MODEL]):
+         for ordering in orderings:
+             field_name, order_type = self._resolve_ordering_string(ordering)
+
++            if field_name == "?":
++                new_ordering.append((field_name, order_type))
++                continue
++
+             if not (
+                 field_name.split("__")[0] in self.model._meta.fields
+                 or field_name in self._annotations
+@@ -1647,18 +1660,26 @@ class BulkUpdateQuery(UpdateQuery):
+             annotations=self.annotations,
+             custom_filters=self.custom_filters,
+         )
+-        pk = Field(self.model._meta.pk_attr)
++        # Need to get executor to encode values to their db representation
++        executor = self._db.executor_class(model=self.model, db=self._db)
++        pk_attr = self.model._meta.pk_attr
++        pk_field_object = self.model._meta.pk
++        source_pk_attr = pk_field_object.source_field or pk_attr
++        pk = Field(source_pk_attr, table=table)
+         for objects_item in chunk(self.objects, self.batch_size):
+             query = copy(self.query)
+             for field in self.fields:
+                 case = Case()
+                 pk_list = []
++                field_object = self.model._meta.fields_map[field]
++                db_field = field_object.source_field or field
+                 for obj in objects_item:
+-                    attr = getattr(obj, field)
+-                    case.when(pk == obj.pk, attr)
+-                    pk_list.append(obj.pk)
+-                query = query.set(field, case)
+-                query = query.where(pk.isin(pk_list))
++                    pk_value = executor._field_to_db(pk_field_object, obj.pk, obj)
++                    attr = executor._field_to_db(field_object, getattr(obj, field), obj)
++                    case.when(pk == pk_value, attr)
++                    pk_list.append(pk_value)
++                query = query.set(db_field, case)
++            query = query.where(pk.isin(pk_list))
+             self.queries.append(query)
+
+     async def _execute(self) -> int:
+# file_editor: /workspace/tortoise-orm/tortoise/queryset.py
+The file /workspace/tortoise-orm/tortoise/queryset.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/tortoise-orm/tortoise/queryset.py:
+  1666	        pk_field_object = self.model._meta.pk
+  1667	        source_pk_attr = pk_field_object.source_field or pk_attr
+  1668	        pk = Field(source_pk_attr, table=table)
+  1669	        for objects_item in chunk(self.objects, self.batch_size):
+  1670	            query = copy(self.query)
+  1671	            pk_list = [
+  1672	                executor._field_to_db(pk_field_object, obj.pk, obj) for obj in objects_item
+  1673	            ]
+  1674	            for field in self.fields:
+  1675	                case = Case()
+  1676	                field_object = self.model._meta.fields_map[field]
+  1677	                db_field = field_object.source_field or field
+  1678	                for obj, pk_value in zip(objects_item, pk_list):
+  1679	                    attr = executor._field_to_db(field_object, getattr(obj, field), obj)
+  1680	                    case.when(pk == pk_value, attr)
+  1681	                query = query.set(db_field, case)
+  1682	            query = query.where(pk.isin(pk_list))
+  1683	            self.queries.append(query)
+  1684	
+  1685	    async def _execute(self) -> int:
+  1686	        count = 0
+  1687	        for query in self.queries:
+  1688	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/tortoise-orm && grep -n "def chunk" tortoise/utils.py && sed -n "/def chunk/,/^def /p" tortoise/utils.py
+34:def chunk(instances: Iterable[Any], batch_size: Optional[int] = None) -> Iterable[Iterable[Any]]:
+def chunk(instances: Iterable[Any], batch_size: Optional[int] = None) -> Iterable[Iterable[Any]]:
+    """
+    Generate iterable chunk by batch_size
+    # noqa: DAR301
+    """
+    if not batch_size:
+        yield instances
+    else:
+        instances = list(instances)
+        for i in range(0, len(instances), batch_size):
+            yield instances[i : i + batch_size]  # noqa:E203
+# file_editor: /workspace/tortoise-orm/tortoise/queryset.py
+The file /workspace/tortoise-orm/tortoise/queryset.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/tortoise-orm/tortoise/queryset.py:
+  1666	        pk_field_object = self.model._meta.pk
+  1667	        source_pk_attr = pk_field_object.source_field or pk_attr
+  1668	        pk = Field(source_pk_attr, table=table)
+  1669	        for objects_item in chunk(self.objects, self.batch_size):
+  1670	            objects_item = list(objects_item)
+  1671	            query = copy(self.query)
+  1672	            pk_list = [
+  1673	                executor._field_to_db(pk_field_object, obj.pk, obj) for obj in objects_item
+  1674	            ]
+  1675	            for field in self.fields:
+  1676	                case = Case()
+  1677	                field_object = self.model._meta.fields_map[field]
+  1678	                db_field = field_object.source_field or field
+  1679	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/tortoise-orm && python -m pytest tests/test_bulk.py -o addopts="" 2>&1 | grep -E "passed|failed|error"; cat > tests/_z_bulkuuid.py << 'PYEOF'
+$ from tortoise.contrib import test
+$ from tests.testmodels import UUIDPkModel, UUIDFkRelatedModel
+$ 
+$ 
+$ class TestBulkUpdateUUID(test.TestCase):
+$     async def test_bulk_update_uuid_pk(self):
+$         parent = await UUIDPkModel.create()
+$         a = await UUIDFkRelatedModel.create(name="a", model=parent)
+$         b = await UUIDFkRelatedModel.create(name="b", model=parent)
+$         a.name = "AA"; b.name = "BB"
+$         await UUIDFkRelatedModel.bulk_update([a, b], fields=["name"])
+$         assert sorted(await UUIDFkRelatedModel.all().values_list("name", flat=True)) == ["AA", "BB"]
+$ 
+$     async def test_bulk_update_batch(self):
+$         parent = await UUIDPkModel.create()
+$         objs = [await UUIDFkRelatedModel.create(name=str(i), model=parent) for i in range(5)]
+$         for i, o in enumerate(objs):
+$             o.name = f"n{i}"
+$         await UUIDFkRelatedModel.bulk_update(objs, fields=["name"], batch_size=2)
+$         assert sorted(await UUIDFkRelatedModel.all().values_list("name", flat=True)) == ["n0","n1","n2","n3","n4"]
+$ PYEOF
+$ python -m pytest tests/_z_bulkuuid.py -o addopts="" 2>&1 | grep -E "passed|failed|error"; rm tests/_z_bulkuuid.py
+cd /workspace/tortoise-orm && python -m pytest tests/test_bulk.py -o addopts="" 2>&1 | grep -E "passed|failed|error"; cat > tests/_z_bulkuuid.py << 'PYEOF'
+from tortoise.contrib import test
+from tests.testmodels import UUIDPkModel, UUIDFkRelatedModel
+class TestBulkUpdateUUID(test.TestCase):
+    async def test_bulk_update_uuid_pk(self):
+        parent = await UUIDPkModel.create()
+        a = await UUIDFkRelatedModel.create(name="a", model=parent)
+        b = await UUIDFkRelatedModel.create(name="b", model=parent)
+        a.name = "AA"; b.name = "BB"
+        await UUIDFkRelatedModel.bulk_update([a, b], fields=["name"])
+        assert sorted(await UUIDFkRelatedModel.all().values_list("name", flat=True)) == ["AA", "BB"]
+    async def test_bulk_update_batch(self):
+        parent = await UUIDPkModel.create()
+        objs = [await UUIDFkRelatedModel.create(name=str(i), model=parent) for i in range(5)]
+        for i, o in enumerate(objs):
+            o.name = f"n{i}"
+        await UUIDFkRelatedModel.bulk_update(objs, fields=["name"], batch_size=2)
+        assert sorted(await UUIDFkRelatedModel.all().values_list("name", flat=True)) == ["n0","n1","n2","n3","n4"]
+PYEOF
+======================= 11 passed, 12 warnings in 0.27s ========================
+
+
+python -m pytest tests/_z_bulkuuid.py -o addopts="" 2>&1 | grep -E "passed|failed|error"; rm tests/_z_bulkuuid.py
+======================== 2 passed, 12 warnings in 0.11s ========================
+$ cd /workspace/tortoise-orm && python -m pytest tests/ -q -o addopts="" --ignore=tests/contrib/test_pydantic.py --ignore=tests/test_early_init.py --deselect tests/backends/test_connection_params.py::TestConnectionParams::test_mysql_connection_params -p no:cacheprovider 2>&1 | tail -4
+def proxy():
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+956 passed, 47 skipped, 1 deselected, 4 xfailed, 51 warnings in 7.65s
+# finish: Finalize with summary of implemented changes
+I implemented the concrete, source-code-level features/fixes from the issue list and validated them against the repository's own test framework and models.
+
+## Implemented changes
+
+**#943 — Case-When support** (`tortoise/expressions.py`)
+Added `Case` and `When` classes: `Case(When(cond1, ..., condN, then=...), When(...), default=...)`. Conditions accept `Q` objects or keyword filters (same syntax as `filter()`/`exclude()`) plus a `negate` flag; `then`/`default` accept plain values, `F` expressions, arithmetic expressions and functions. They expose `.resolve(model, table)` so they work in `annotate()` and can be filtered on afterwards. (`Q` is also re-exported via `tortoise.expressions`.)
+
+**#938 — Random ordering** (`tortoise/queryset.py`)
+`order_by("?")` now emits `ORDER BY RANDOM()` (or `RAND()` on MySQL), handled in both `order_by()` and `resolve_ordering()`.
+
+**#986 — `bulk_update` fails with UUID PK** (`tortoise/queryset.py`)
+`BulkUpdateQuery._make_query` now encodes both the PK and field values to their DB representation via the executor (`_field_to_db`), so UUIDs/other types are correctly quoted. Also uses `source_field` for db column names, computes the pk list once per batch, and removes the duplicated per-field `WHERE` clause.
+
+**#969 — Mutable default values shared between instances** (`tortoise/models.py`)
+Non-callable field defaults are now `deepcopy`-ied per new instance, so mutable defaults (e.g. `JSONField(default=[])`) are no longer shared.
+
+**#946 — Nose2 plugin typo** (`tortoise/contrib/test/nose2.py`)
+Fixed `--app-label` (was `dest="db_url"`/`metavar="URI"` → now `dest="app_label"`/`metavar="LABEL"`) and read it in `handleArgs`.
+
+**#945 — pyproject classifiers** (`pyproject.toml`)
+Dropped the stale Python 3.6 classifier and added 3.9/3.10 to match `python = "^3.7"`.
+
+Docs (`docs/expressions.rst`) and `CHANGELOG.rst` updated accordingly.
+
+## Verification
+- Wrote temporary tests using the repo's `tortoise.contrib.test.TestCase` and real `testmodels` (`IntFields`, `UUIDFkRelatedModel`) covering single/multiple When, Q-object conditions, `F` in `then`/`default`, `negate`, filtering on an annotated Case, random ordering, and UUID-PK `bulk_update` (incl. batching) — all pass, then removed them.
+- Full suite: **956 passed, 47 skipped, 4 xfailed**. The only excluded items are pre-existing environment failures caused by missing optional dependencies (`pydantic`, `asyncmy`, `nose2`), unrelated to my changes.
+
+## Intentionally not changed
+- #957 (style refactor), #962 (test-file typo), #963 (CI Python 3.10), #977 (remove asynctest/green/nose2), #1007 (lxml bump) are CI/dependency/test-only changes.
+- #428 (`ON CONFLICT`/upserts) is a large per-dialect feature that landed in a much later tortoise-orm version than this baseline (0.17.8/0.18); implementing it would touch every backend's bulk-insert path with high regression risk and is outside the scope of the tested changes here.

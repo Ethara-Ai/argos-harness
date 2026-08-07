@@ -1,0 +1,47 @@
+schema_version = "1.0"
+
+[task]
+uuid_v5 = "9a959823-e9ff-418e-a2aa-297a9a0735fa"
+authors = [
+    { name = "Suryansh Rana" },
+    { name = "Sarvex Jatasara" },
+    { name = "Aditya Pathak" },
+    { name = "Shraiy Khaddar" },
+    { name = "Ankit Porwal" },
+    { name = "Sagarika Nayak" },
+    { name = "Abhijeet Chaurasiya" },
+    { name = "Dishansh Tiwari" },
+    { name = "Shreyansh Parashar" },
+    { name = "Kshitij Mehta" },
+    { name = "Akash Kumar" },
+    { name = "Samyak Jain" },
+    { name = "Prem Ayer" },
+    { name = "Rishav Kumar" },
+    { name = "Harish Yadav" },
+    { name = "Abhay Haldiya" },
+    { name = "Ankit kumar" },
+]
+keywords = ["python", "issue-resolving", "tortoise-orm"]
+
+[metadata]
+difficulty = "hard"
+category = "software-development"
+
+[verifier]
+# V-001: neither the verifier nor the agent needs external network. The verifier
+# runs the deterministic post-fix test cmd offline; the agent solves under the
+# harness full egress block (only LLM API endpoints reachable). Both are "none",
+# which seals oracle-solution exfiltration via either the verifier or agent path.
+network_mode = "none"
+timeout_sec = 7200.0
+
+[agent]
+network_mode = "none"
+timeout_sec = 14400.0
+
+[environment]
+build_timeout_sec = 1800.0
+cpus = 8
+memory_mb = 12288
+storage_mb = 10240
+gpus = 0

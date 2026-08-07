@@ -1,0 +1,932 @@
+diff --git a/examples/fastapi/_tests.py b/examples/fastapi/_tests.py
+index b8e2505a9..8415a2572 100644
+--- a/examples/fastapi/_tests.py
++++ b/examples/fastapi/_tests.py
+@@ -5,9 +5,9 @@
+ 
+ import pytest
+ from fastapi.testclient import TestClient
+-
+ from main import app
+ from models import Users
++
+ from tortoise.contrib.test import finalizer, initializer
+ 
+ 
+diff --git a/tests/fields/test_decimal.py b/tests/fields/test_decimal.py
+index 443147b9d..787cd5291 100644
+--- a/tests/fields/test_decimal.py
++++ b/tests/fields/test_decimal.py
+@@ -92,7 +92,8 @@ async def test_aggregate_sum(self):
+             .values("sum_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"sum_decimal": Decimal("37.26")},
++            values[0],
++            {"sum_decimal": Decimal("37.26")},
+         )
+ 
+     async def test_aggregate_sum_with_f_expression(self):
+@@ -105,7 +106,8 @@ async def test_aggregate_sum_with_f_expression(self):
+             .values("sum_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"sum_decimal": Decimal("37.26")},
++            values[0],
++            {"sum_decimal": Decimal("37.26")},
+         )
+ 
+         values = (
+@@ -114,7 +116,8 @@ async def test_aggregate_sum_with_f_expression(self):
+             .values("sum_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"sum_decimal": Decimal("40.26")},
++            values[0],
++            {"sum_decimal": Decimal("40.26")},
+         )
+ 
+         values = (
+@@ -123,7 +126,8 @@ async def test_aggregate_sum_with_f_expression(self):
+             .values("sum_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"sum_decimal": Decimal("74.52")},
++            values[0],
++            {"sum_decimal": Decimal("74.52")},
+         )
+ 
+         values = (
+@@ -132,7 +136,8 @@ async def test_aggregate_sum_with_f_expression(self):
+             .values("sum_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"sum_decimal": Decimal("4E+1")},
++            values[0],
++            {"sum_decimal": Decimal("4E+1")},
+         )
+ 
+         values = (
+@@ -141,12 +146,14 @@ async def test_aggregate_sum_with_f_expression(self):
+             .values("sum_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"sum_decimal": None},
++            values[0],
++            {"sum_decimal": None},
+         )
+ 
+     async def test_aggregate_sum_no_exist_field_with_f_expression(self):
+         with self.assertRaisesRegex(
+-            FieldError, "There is no non-virtual field not_exist on Model DecimalFields",
++            FieldError,
++            "There is no non-virtual field not_exist on Model DecimalFields",
+         ):
+             await testmodels.DecimalFields.all().annotate(sum_decimal=Sum(F("not_exist"))).values(
+                 "sum_decimal"
+@@ -178,7 +185,8 @@ async def test_aggregate_avg(self):
+             .values("avg_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"avg_decimal": Decimal("12.42")},
++            values[0],
++            {"avg_decimal": Decimal("12.42")},
+         )
+ 
+     async def test_aggregate_avg_with_f_expression(self):
+@@ -191,7 +199,8 @@ async def test_aggregate_avg_with_f_expression(self):
+             .values("avg_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"avg_decimal": Decimal("12.42")},
++            values[0],
++            {"avg_decimal": Decimal("12.42")},
+         )
+ 
+         values = (
+@@ -200,7 +209,8 @@ async def test_aggregate_avg_with_f_expression(self):
+             .values("avg_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"avg_decimal": Decimal("13.42")},
++            values[0],
++            {"avg_decimal": Decimal("13.42")},
+         )
+ 
+         values = (
+@@ -209,7 +219,8 @@ async def test_aggregate_avg_with_f_expression(self):
+             .values("avg_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"avg_decimal": Decimal("24.84")},
++            values[0],
++            {"avg_decimal": Decimal("24.84")},
+         )
+ 
+         values = (
+@@ -218,7 +229,8 @@ async def test_aggregate_avg_with_f_expression(self):
+             .values("avg_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"avg_decimal": Decimal("13")},
++            values[0],
++            {"avg_decimal": Decimal("13")},
+         )
+ 
+         values = (
+@@ -227,7 +239,8 @@ async def test_aggregate_avg_with_f_expression(self):
+             .values("avg_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"avg_decimal": None},
++            values[0],
++            {"avg_decimal": None},
+         )
+ 
+     async def test_aggregate_max(self):
+@@ -240,7 +253,8 @@ async def test_aggregate_max(self):
+             .values("max_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"max_decimal": Decimal("27.27")},
++            values[0],
++            {"max_decimal": Decimal("27.27")},
+         )
+ 
+     async def test_aggregate_max_with_f_expression(self):
+@@ -253,7 +267,8 @@ async def test_aggregate_max_with_f_expression(self):
+             .values("max_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"max_decimal": Decimal("27.27")},
++            values[0],
++            {"max_decimal": Decimal("27.27")},
+         )
+ 
+         values = (
+@@ -262,7 +277,8 @@ async def test_aggregate_max_with_f_expression(self):
+             .values("max_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"max_decimal": Decimal("28.27")},
++            values[0],
++            {"max_decimal": Decimal("28.27")},
+         )
+ 
+         values = (
+@@ -271,7 +287,8 @@ async def test_aggregate_max_with_f_expression(self):
+             .values("max_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"max_decimal": Decimal("54.54")},
++            values[0],
++            {"max_decimal": Decimal("54.54")},
+         )
+ 
+         values = (
+@@ -280,7 +297,8 @@ async def test_aggregate_max_with_f_expression(self):
+             .values("max_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"max_decimal": Decimal("28")},
++            values[0],
++            {"max_decimal": Decimal("28")},
+         )
+ 
+         values = (
+@@ -289,5 +307,6 @@ async def test_aggregate_max_with_f_expression(self):
+             .values("max_decimal")
+         )
+         self.assertEqual(
+-            values[0], {"max_decimal": None},
++            values[0],
++            {"max_decimal": None},
+         )
+diff --git a/tests/fields/test_int.py b/tests/fields/test_int.py
+index f05ab9d05..389746f4d 100644
+--- a/tests/fields/test_int.py
++++ b/tests/fields/test_int.py
+@@ -14,7 +14,7 @@ async def test_create(self):
+         obj = await testmodels.IntFields.get(id=obj0.id)
+         self.assertEqual(obj.intnum, 2147483647)
+         self.assertEqual(obj.intnum_null, None)
+-        await obj.save()
++
+         obj2 = await testmodels.IntFields.get(id=obj.id)
+         self.assertEqual(obj, obj2)
+ 
+@@ -34,7 +34,7 @@ async def test_min(self):
+         obj = await testmodels.IntFields.get(id=obj0.id)
+         self.assertEqual(obj.intnum, -2147483648)
+         self.assertEqual(obj.intnum_null, None)
+-        await obj.save()
++
+         obj2 = await testmodels.IntFields.get(id=obj.id)
+         self.assertEqual(obj, obj2)
+ 
+diff --git a/tests/fields/test_subclass.py b/tests/fields/test_subclass.py
+index 009c7a8bd..15652b62f 100644
+--- a/tests/fields/test_subclass.py
++++ b/tests/fields/test_subclass.py
+@@ -4,10 +4,14 @@
+ 
+ async def create_participants():
+     test1 = await RaceParticipant.create(
+-        first_name="Alex", place=RacePlacingEnum.FIRST, predicted_place=RacePlacingEnum.THIRD,
++        first_name="Alex",
++        place=RacePlacingEnum.FIRST,
++        predicted_place=RacePlacingEnum.THIRD,
+     )
+     test2 = await RaceParticipant.create(
+-        first_name="Ben", place=RacePlacingEnum.SECOND, predicted_place=RacePlacingEnum.FIRST,
++        first_name="Ben",
++        place=RacePlacingEnum.SECOND,
++        predicted_place=RacePlacingEnum.FIRST,
+     )
+     test3 = await RaceParticipant.create(first_name="Chris", place=RacePlacingEnum.THIRD)
+     test4 = await RaceParticipant.create(first_name="Bill")
+diff --git a/tests/fields/test_time.py b/tests/fields/test_time.py
+index 28f4ac360..ae210f481 100644
+--- a/tests/fields/test_time.py
++++ b/tests/fields/test_time.py
+@@ -1,12 +1,15 @@
++import os
+ from datetime import date, datetime, timedelta
+ from time import sleep
+ 
++import pytz
+ from iso8601 import ParseError
+ 
+ from tests import testmodels
+-from tortoise import fields
++from tortoise import fields, timezone
+ from tortoise.contrib import test
+ from tortoise.exceptions import ConfigurationError, IntegrityError
++from tortoise.timezone import get_default_timezone
+ 
+ 
+ class TestDatetimeFields(test.TestCase):
+@@ -21,7 +24,7 @@ async def test_empty(self):
+             await testmodels.DatetimeFields.create()
+ 
+     async def test_create(self):
+-        now = datetime.utcnow()
++        now = timezone.now()
+         obj0 = await testmodels.DatetimeFields.create(datetime=now)
+         obj = await testmodels.DatetimeFields.get(id=obj0.id)
+         self.assertEqual(obj.datetime, now)
+@@ -46,41 +49,41 @@ async def test_update(self):
+             datetime=datetime(2019, 9, 1, 6, 0, 8)
+         )
+         obj = await testmodels.DatetimeFields.get(id=obj0.id)
+-        self.assertEqual(obj.datetime, datetime(2019, 9, 1, 6, 0, 8))
++        self.assertEqual(obj.datetime, datetime(2019, 9, 1, 6, 0, 8, tzinfo=get_default_timezone()))
+         self.assertEqual(obj.datetime_null, None)
+ 
+     async def test_cast(self):
+-        now = datetime.utcnow()
++        now = timezone.now()
+         obj0 = await testmodels.DatetimeFields.create(datetime=now.isoformat())
+         obj = await testmodels.DatetimeFields.get(id=obj0.id)
+         self.assertEqual(obj.datetime, now)
+ 
+     async def test_values(self):
+-        now = datetime.utcnow()
++        now = timezone.now()
+         obj0 = await testmodels.DatetimeFields.create(datetime=now)
+         values = await testmodels.DatetimeFields.get(id=obj0.id).values("datetime")
+         self.assertEqual(values[0]["datetime"], now)
+ 
+     async def test_values_list(self):
+-        now = datetime.utcnow()
++        now = timezone.now()
+         obj0 = await testmodels.DatetimeFields.create(datetime=now)
+         values = await testmodels.DatetimeFields.get(id=obj0.id).values_list("datetime", flat=True)
+         self.assertEqual(values[0], now)
+ 
+     async def test_get_utcnow(self):
+-        now = datetime.utcnow()
++        now = datetime.utcnow().replace(tzinfo=get_default_timezone())
+         await testmodels.DatetimeFields.create(datetime=now)
+         obj = await testmodels.DatetimeFields.get(datetime=now)
+         self.assertEqual(obj.datetime, now)
+ 
+     async def test_get_now(self):
+-        now = datetime.now()
++        now = timezone.now()
+         await testmodels.DatetimeFields.create(datetime=now)
+         obj = await testmodels.DatetimeFields.get(datetime=now)
+         self.assertEqual(obj.datetime, now)
+ 
+     async def test_count(self):
+-        now = datetime.now()
++        now = timezone.now()
+         obj = await testmodels.DatetimeFields.create(datetime=now)
+         self.assertEqual(await testmodels.DatetimeFields.filter(datetime=obj.datetime).count(), 1)
+         self.assertEqual(
+@@ -94,12 +97,54 @@ async def test_date_str(self):
+         obj0 = await testmodels.DateFields.create(date="2020-08-17")
+         obj1 = await testmodels.DateFields.get(date="2020-08-17")
+         self.assertEqual(obj0.date, obj1.date)
+-        with self.assertRaises((ParseError, ValueError),):
++        with self.assertRaises(
++            (ParseError, ValueError),
++        ):
+             await testmodels.DateFields.create(date="2020-08-xx")
+         await testmodels.DateFields.filter(date="2020-08-17").update(date="2020-08-18")
+         obj2 = await testmodels.DateFields.get(date="2020-08-18")
+         self.assertEqual(obj2.date, date(year=2020, month=8, day=18))
+ 
++    async def test_default_timezone(self):
++        now = timezone.now()
++        obj = await testmodels.DatetimeFields.create(datetime=now)
++        self.assertEqual(obj.datetime.tzinfo.zone, "UTC")
++
++        obj_get = await testmodels.DatetimeFields.get(pk=obj.pk)
++        self.assertEqual(obj_get.datetime.tzinfo.zone, "UTC")
++        self.assertEqual(obj_get.datetime, now)
++
++    async def test_set_timezone(self):
++        old_tz = os.environ["TZ"]
++        tz = "Asia/Shanghai"
++        os.environ["TZ"] = tz
++        now = datetime.now(pytz.timezone(tz))
++        obj = await testmodels.DatetimeFields.create(datetime=now)
++        self.assertEqual(obj.datetime.tzinfo.zone, tz)
++
++        obj_get = await testmodels.DatetimeFields.get(pk=obj.pk)
++        self.assertEqual(obj_get.datetime.tzinfo.zone, tz)
++        self.assertEqual(obj_get.datetime, now)
++
++        os.environ["TZ"] = old_tz
++
++    async def test_timezone(self):
++        old_tz = os.environ["TZ"]
++        old_use_tz = os.environ["USE_TZ"]
++        tz = "Asia/Shanghai"
++        os.environ["TZ"] = tz
++        os.environ["USE_TZ"] = "True"
++
++        now = datetime.now(pytz.timezone(tz))
++        obj = await testmodels.DatetimeFields.create(datetime=now)
++        self.assertEqual(obj.datetime.tzinfo.zone, tz)
++        obj_get = await testmodels.DatetimeFields.get(pk=obj.pk)
++        self.assertEqual(obj.datetime.tzinfo.zone, tz)
++        self.assertEqual(obj_get.datetime, now)
++
++        os.environ["TZ"] = old_tz
++        os.environ["USE_TZ"] = old_use_tz
++
+ 
+ class TestDateFields(test.TestCase):
+     async def test_empty(self):
+@@ -144,7 +189,7 @@ async def test_date_str(self):
+         obj0 = await testmodels.DateFields.create(date="2020-08-17")
+         obj1 = await testmodels.DateFields.get(date="2020-08-17")
+         self.assertEqual(obj0.date, obj1.date)
+-        with self.assertRaises(ValueError):
++        with self.assertRaises(Exception):
+             await testmodels.DateFields.create(date="2020-08-xx")
+         await testmodels.DateFields.filter(date="2020-08-17").update(date="2020-08-18")
+         obj2 = await testmodels.DateFields.get(date="2020-08-18")
+diff --git a/tests/requirements-pypy.in b/tests/requirements-pypy.in
+deleted file mode 100644
+index 1f6a8e114..000000000
+--- a/tests/requirements-pypy.in
++++ /dev/null
+@@ -1,16 +0,0 @@
+--r ../requirements.txt
+-
+-## Database Drivers
+-aiomysql
+-
+-# Dev Tools
+-
+-## Test tools
+-asynctest
+-pytest<5.4
+-pytest-xdist
+-pytest-cov
+-coveralls
+-
+-# Pydantic support
+-pydantic
+diff --git a/tests/requirements-pypy.txt b/tests/requirements-pypy.txt
+deleted file mode 100644
+index 54e5d69b3..000000000
+--- a/tests/requirements-pypy.txt
++++ /dev/null
+@@ -1,41 +0,0 @@
+-#
+-# This file is autogenerated by pip-compile
+-# To update, run:
+-#
+-#    make up
+-#
+-aiomysql==0.0.20          # via -r requirements-pypy.in
+-aiosqlite==0.15.0         # via -r ../requirements.txt
+-apipkg==1.5               # via execnet
+-asynctest==0.13.0         # via -r requirements-pypy.in
+-attrs==19.3.0             # via pytest
+-certifi==2020.6.20        # via requests
+-cffi==1.14.1              # via cryptography
+-chardet==3.0.4            # via requests
+-coverage==5.2.1           # via coveralls, pytest-cov
+-coveralls==2.1.1          # via -r requirements-pypy.in
+-cryptography==3.0         # via pymysql
+-docopt==0.6.2             # via coveralls
+-execnet==1.7.1            # via pytest-xdist
+-idna==2.10                # via requests
+-importlib-metadata==1.7.0  # via pluggy, pytest
+-iso8601==0.1.12           # via -r ../requirements.txt
+-more-itertools==8.4.0     # via pytest
+-packaging==20.4           # via pytest
+-pluggy==0.13.1            # via pytest
+-py==1.9.0                 # via pytest, pytest-forked
+-pycparser==2.20           # via cffi
+-pydantic==1.6.1           # via -r requirements-pypy.in
+-pymysql==0.9.2            # via aiomysql
+-pyparsing==2.4.7          # via packaging
+-pypika==0.38.0            # via -r ../requirements.txt
+-pytest-cov==2.10.0        # via -r requirements-pypy.in
+-pytest-forked==1.3.0      # via pytest-xdist
+-pytest-xdist==1.34.0      # via -r requirements-pypy.in
+-pytest==5.3.5             # via -r requirements-pypy.in, pytest-cov, pytest-forked, pytest-xdist
+-requests==2.24.0          # via coveralls
+-six==1.15.0               # via cryptography, packaging, pytest-xdist
+-typing-extensions==3.7.4.2  # via -r ../requirements.txt, aiosqlite
+-urllib3==1.25.10          # via requests
+-wcwidth==0.2.5            # via pytest
+-zipp==3.1.0               # via importlib-metadata
+diff --git a/tests/requirements.in b/tests/requirements.in
+deleted file mode 100644
+index dbf26092e..000000000
+--- a/tests/requirements.in
++++ /dev/null
+@@ -1,57 +0,0 @@
+--e ..
+--r ../requirements-accel.txt
+-
+-## Database Drivers
+-asyncpg
+-aiomysql
+-
+-# Dev Tools
+-
+-## Administration tools
+-pip-tools
+-
+-## Documentation tools
+--r ../docs/requirements.in
+-
+-## Linter tools
+-mypy
+-flake8-isort
+-flake8-comprehensions
+-darglint
+-pylint
+-docutils
+-pygments
+-bandit
+-black
+-
+-## Test tools
+-tox
+-asynctest
+-green
+-coveralls
+-pytest<5.4 # Has annoying deprecation warning of itself?  >5.2, !=5.4.0, !=5.4.1
+-nose2
+-pytest-xdist
+-pytest-cov
+-
+-# Pypi
+-twine
+-
+-# Sample integration - Quart
+-quart
+-
+-# Sample integration - Sanic
+-sanic
+-
+-# Sample integration - Starlette
+-starlette
+-uvicorn
+-
+-# Pydantic support
+-pydantic
+-
+-# FastAPI support
+-fastapi
+-
+-# Aiohttp support
+-aiohttp
+diff --git a/tests/requirements.txt b/tests/requirements.txt
+deleted file mode 100644
+index 6e3d07c57..000000000
+--- a/tests/requirements.txt
++++ /dev/null
+@@ -1,138 +0,0 @@
+-#
+-# This file is autogenerated by pip-compile
+-# To update, run:
+-#
+-#    make up
+-#
+--e .
+-aiofiles==0.5.0           # via quart, sanic
+-aiohttp==3.6.2            # via -r requirements.in
+-aiomysql==0.0.20          # via -r requirements.in
+-aiosqlite==0.15.0         # via -r ../docs/../requirements.txt, tortoise-orm
+-alabaster==0.7.12         # via sphinx
+-apipkg==1.5               # via execnet
+-appdirs==1.4.4            # via black, virtualenv
+-astroid==2.4.2            # via pylint
+-async-timeout==3.0.1      # via aiohttp
+-asyncpg==0.20.1           # via -r requirements.in
+-asynctest==0.13.0         # via -r requirements.in
+-attrs==19.3.0             # via aiohttp, black, pytest
+-babel==2.8.0              # via sphinx
+-bandit==1.6.2             # via -r requirements.in
+-black==19.10b0            # via -r requirements.in
+-bleach==3.1.5             # via readme-renderer
+-blinker==1.4              # via quart
+-certifi==2020.6.20        # via httpx, requests
+-cffi==1.14.1              # via cryptography
+-chardet==3.0.4            # via aiohttp, httpx, requests
+-ciso8601==2.1.3 ; sys_platform != "win32" and implementation_name == "cpython"  # via -r ../requirements-accel.txt
+-click==7.1.2              # via black, pip-tools, quart, uvicorn
+-cloud-sptheme==1.10.1.post20200504175005  # via -r ../docs/requirements.in
+-colorama==0.4.3           # via green, twine
+-coverage==5.2.1           # via coveralls, green, nose2, pytest-cov
+-coveralls==2.1.1          # via -r requirements.in
+-cryptography==3.0         # via pymysql, secretstorage
+-darglint==1.5.2           # via -r requirements.in
+-distlib==0.3.1            # via virtualenv
+-docopt==0.6.2             # via coveralls
+-docutils==0.14            # via -r ../docs/requirements.in, -r requirements.in, readme-renderer, sphinx
+-execnet==1.7.1            # via pytest-xdist
+-fastapi==0.60.1           # via -r requirements.in
+-filelock==3.0.12          # via tox, virtualenv
+-flake8-comprehensions==3.2.3  # via -r requirements.in
+-flake8-isort==3.0.1       # via -r requirements.in
+-flake8==3.8.3             # via flake8-comprehensions, flake8-isort
+-gitdb==4.0.5              # via gitpython
+-gitpython==3.1.7          # via bandit
+-green==3.2.0              # via -r requirements.in
+-h11==0.9.0                # via httpx, hypercorn, uvicorn, wsproto
+-h2==3.2.0                 # via httpx, hypercorn
+-hpack==3.0.0              # via h2
+-hstspreload==2020.7.29    # via httpx
+-httptools==0.1.1          # via sanic, uvicorn
+-httpx==0.11.1             # via sanic
+-hypercorn==0.10.2         # via quart
+-hyperframe==5.2.0         # via h2
+-idna==2.10                # via httpx, requests, yarl
+-imagesize==1.2.0          # via sphinx
+-importlib-metadata==1.7.0  # via flake8, flake8-comprehensions, keyring, pluggy, pytest, stevedore, tox, twine, virtualenv
+-iso8601==0.1.12           # via -r ../docs/../requirements.txt, tortoise-orm
+-isort[pyproject]==4.3.21  # via flake8-isort, pylint
+-itsdangerous==1.1.0       # via quart
+-jeepney==0.4.3            # via keyring, secretstorage
+-jinja2==2.11.2            # via quart, sphinx
+-keyring==21.3.0           # via twine
+-lazy-object-proxy==1.4.3  # via astroid
+-lxml==4.5.2               # via green
+-markupsafe==1.1.1         # via jinja2
+-mccabe==0.6.1             # via flake8, pylint
+-more-itertools==8.4.0     # via pytest
+-multidict==4.7.6          # via aiohttp, sanic, yarl
+-mypy-extensions==0.4.3    # via mypy
+-mypy==0.782               # via -r requirements.in
+-nose2==0.9.2              # via -r requirements.in
+-packaging==20.4           # via bleach, pytest, sphinx, tox
+-pathspec==0.8.0           # via black
+-pbr==5.4.5                # via stevedore
+-pip-tools==5.3.1          # via -r requirements.in
+-pkginfo==1.5.0.1          # via twine
+-pluggy==0.13.1            # via pytest, tox
+-priority==1.3.0           # via hypercorn
+-py==1.9.0                 # via pytest, pytest-forked, tox
+-pycodestyle==2.6.0        # via flake8
+-pycparser==2.20           # via cffi
+-pydantic==1.6.1           # via -r requirements.in, fastapi
+-pyflakes==2.2.0           # via flake8
+-pygments==2.5.1           # via -r ../docs/requirements.in, -r requirements.in, readme-renderer, sphinx
+-pylint==2.5.3             # via -r requirements.in
+-pymysql==0.9.2            # via aiomysql
+-pyparsing==2.4.7          # via packaging
+-pypika==0.39.1            # via -r ../docs/../requirements.txt, tortoise-orm
+-pytest-cov==2.10.0        # via -r requirements.in
+-pytest-forked==1.3.0      # via pytest-xdist
+-pytest-xdist==1.34.0      # via -r requirements.in
+-pytest==5.3.5             # via -r requirements.in, pytest-cov, pytest-forked, pytest-xdist
+-python-rapidjson==0.9.1 ; implementation_name == "cpython"  # via -r ../requirements-accel.txt
+-pytz==2020.1              # via babel
+-pyyaml==5.3.1             # via bandit
+-quart==0.13.0             # via -r requirements.in
+-readme-renderer==26.0     # via twine
+-regex==2020.7.14          # via black
+-requests-toolbelt==0.9.1  # via twine
+-requests==2.24.0          # via coveralls, requests-toolbelt, sphinx, twine
+-rfc3986==1.4.0            # via httpx, twine
+-sanic==20.6.3             # via -r requirements.in
+-secretstorage==3.1.2      # via keyring
+-six==1.15.0               # via astroid, bandit, bleach, cryptography, nose2, packaging, pip-tools, pytest-xdist, readme-renderer, sphinx, tox, virtualenv
+-smmap==3.0.4              # via gitdb
+-sniffio==1.1.0            # via httpx
+-snowballstemmer==2.0.0    # via sphinx
+-sphinx==1.8.5             # via -r ../docs/requirements.in, cloud-sptheme
+-sphinxcontrib-websupport==1.2.3  # via sphinx
+-starlette==0.13.6         # via -r requirements.in, fastapi
+-stevedore==3.2.0          # via bandit
+-testfixtures==6.14.1      # via flake8-isort
+-toml==0.10.1              # via black, hypercorn, isort, pylint, quart, tox
+-tox==3.18.1               # via -r requirements.in
+-tqdm==4.48.2              # via twine
+-twine==3.2.0              # via -r requirements.in
+-typed-ast==1.4.1          # via astroid, black, mypy
+-typing-extensions==3.7.4.2  # via -r ../docs/../requirements.txt, aiosqlite, hypercorn, mypy, tortoise-orm, yarl
+-ujson==3.1.0              # via sanic
+-unidecode==1.1.1          # via green
+-urllib3==1.25.10          # via httpx, requests
+-uvicorn==0.11.8           # via -r requirements.in
+-uvloop==0.14.0 ; sys_platform != "win32" and implementation_name == "cpython"  # via -r ../requirements-accel.txt, sanic, uvicorn
+-virtualenv==20.0.30       # via tox
+-wcwidth==0.2.5            # via pytest
+-webencodings==0.5.1       # via bleach
+-websockets==8.1           # via sanic, uvicorn
+-werkzeug==1.0.1           # via quart
+-wrapt==1.12.1             # via astroid
+-wsproto==0.15.0           # via hypercorn
+-yarl==1.5.1               # via aiohttp
+-zipp==3.1.0               # via importlib-metadata
+-
+-# The following packages are considered to be unsafe in a requirements file:
+-# pip
+-# setuptools
+diff --git a/tests/schema/models_schema_create.py b/tests/schema/models_schema_create.py
+index 77c79ef05..2359ec45a 100644
+--- a/tests/schema/models_schema_create.py
++++ b/tests/schema/models_schema_create.py
+@@ -109,7 +109,9 @@ class Employee(Model):
+     id = fields.IntField(pk=True)
+     name = fields.TextField()
+     company: fields.ForeignKeyRelation[Company] = fields.ForeignKeyField(
+-        "models.Company", related_name="employees", to_field="uuid",
++        "models.Company",
++        related_name="employees",
++        to_field="uuid",
+     )
+ 
+ 
+diff --git a/tests/schema/test_generate_schema.py b/tests/schema/test_generate_schema.py
+index 4059afb0b..b13baa88c 100644
+--- a/tests/schema/test_generate_schema.py
++++ b/tests/schema/test_generate_schema.py
+@@ -715,7 +715,7 @@ async def test_schema_no_db_constraint(self):
+ CREATE TABLE "tournament" (
+     "tid" SMALLSERIAL NOT NULL PRIMARY KEY,
+     "name" VARCHAR(100) NOT NULL,
+-    "created" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP
++    "created" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP
+ );
+ CREATE INDEX "idx_tournament_name_6fe200" ON "tournament" ("name");
+ COMMENT ON COLUMN "tournament"."name" IS 'Tournament name';
+@@ -724,7 +724,7 @@ async def test_schema_no_db_constraint(self):
+ CREATE TABLE "event" (
+     "id" BIGSERIAL NOT NULL PRIMARY KEY,
+     "name" TEXT NOT NULL,
+-    "modified" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP,
++    "modified" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+     "prize" DECIMAL(10,2),
+     "token" VARCHAR(100) NOT NULL UNIQUE,
+     "key" VARCHAR(100) NOT NULL,
+@@ -804,7 +804,7 @@ async def test_schema(self):
+ CREATE TABLE "tournament" (
+     "tid" SMALLSERIAL NOT NULL PRIMARY KEY,
+     "name" VARCHAR(100) NOT NULL,
+-    "created" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP
++    "created" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP
+ );
+ CREATE INDEX "idx_tournament_name_6fe200" ON "tournament" ("name");
+ COMMENT ON COLUMN "tournament"."name" IS 'Tournament name';
+@@ -813,7 +813,7 @@ async def test_schema(self):
+ CREATE TABLE "event" (
+     "id" BIGSERIAL NOT NULL PRIMARY KEY,
+     "name" TEXT NOT NULL,
+-    "modified" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP,
++    "modified" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+     "prize" DECIMAL(10,2),
+     "token" VARCHAR(100) NOT NULL UNIQUE,
+     "key" VARCHAR(100) NOT NULL,
+@@ -906,7 +906,7 @@ async def test_schema_safe(self):
+ CREATE TABLE IF NOT EXISTS "tournament" (
+     "tid" SMALLSERIAL NOT NULL PRIMARY KEY,
+     "name" VARCHAR(100) NOT NULL,
+-    "created" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP
++    "created" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP
+ );
+ CREATE INDEX IF NOT EXISTS "idx_tournament_name_6fe200" ON "tournament" ("name");
+ COMMENT ON COLUMN "tournament"."name" IS 'Tournament name';
+@@ -915,7 +915,7 @@ async def test_schema_safe(self):
+ CREATE TABLE IF NOT EXISTS "event" (
+     "id" BIGSERIAL NOT NULL PRIMARY KEY,
+     "name" TEXT NOT NULL,
+-    "modified" TIMESTAMP NOT NULL  DEFAULT CURRENT_TIMESTAMP,
++    "modified" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+     "prize" DECIMAL(10,2),
+     "token" VARCHAR(100) NOT NULL UNIQUE,
+     "key" VARCHAR(100) NOT NULL,
+diff --git a/tests/test_default.py b/tests/test_default.py
+index 434bca5d9..71b0f26ce 100644
+--- a/tests/test_default.py
++++ b/tests/test_default.py
+@@ -1,6 +1,8 @@
+ import datetime
+ from decimal import Decimal
+ 
++import pytz
++
+ from tests.testmodels import DefaultModel
+ from tortoise.backends.asyncpg import AsyncpgDBClient
+ from tortoise.backends.mysql import MySQLClient
+@@ -16,7 +18,9 @@ async def setUp(self) -> None:
+                 "insert into defaultmodel (`int_default`,`float_default`,`decimal_default`,`bool_default`,`char_default`,`date_default`,`datetime_default`) values (DEFAULT,DEFAULT,DEFAULT,DEFAULT,DEFAULT,DEFAULT,DEFAULT)",
+             )
+         elif isinstance(connection, SqliteClient):
+-            await connection.execute_query("insert into defaultmodel default values",)
++            await connection.execute_query(
++                "insert into defaultmodel default values",
++            )
+         elif isinstance(connection, AsyncpgDBClient):
+             await connection.execute_query(
+                 'insert into defaultmodel ("int_default","float_default","decimal_default","bool_default","char_default","date_default","datetime_default") values (DEFAULT,DEFAULT,DEFAULT,DEFAULT,DEFAULT,DEFAULT,DEFAULT)',
+@@ -31,5 +35,6 @@ async def test_default(self):
+         self.assertEqual(default_model.char_default, "tortoise")
+         self.assertEqual(default_model.date_default, datetime.date.fromisoformat("2020-05-20"))
+         self.assertEqual(
+-            default_model.datetime_default, datetime.datetime.fromisoformat("2020-05-20 00:00:00")
++            default_model.datetime_default,
++            datetime.datetime(year=2020, month=5, day=20, tzinfo=pytz.utc),
+         )
+diff --git a/tests/test_early_init.py b/tests/test_early_init.py
+index af5b5bc1c..27d8a8533 100644
+--- a/tests/test_early_init.py
++++ b/tests/test_early_init.py
+@@ -110,7 +110,11 @@ def test_early_init(self):
+                         "name": "created_at",
+                         "field_type": "DatetimeField",
+                         "db_column": "created_at",
+-                        "db_field_types": {"": "TIMESTAMP", "mysql": "DATETIME(6)"},
++                        "db_field_types": {
++                            "": "TIMESTAMP",
++                            "mysql": "DATETIME(6)",
++                            "postgres": "TIMESTAMPTZ",
++                        },
+                         "python_type": "datetime.datetime",
+                         "generated": False,
+                         "nullable": False,
+@@ -246,7 +250,11 @@ def test_early_init(self):
+                         "name": "created_at",
+                         "field_type": "DatetimeField",
+                         "db_column": "created_at",
+-                        "db_field_types": {"": "TIMESTAMP", "mysql": "DATETIME(6)"},
++                        "db_field_types": {
++                            "": "TIMESTAMP",
++                            "mysql": "DATETIME(6)",
++                            "postgres": "TIMESTAMPTZ",
++                        },
+                         "python_type": "datetime.datetime",
+                         "generated": False,
+                         "nullable": False,
+diff --git a/tests/test_filters.py b/tests/test_filters.py
+index e7e22be37..0e7d082d0 100644
+--- a/tests/test_filters.py
++++ b/tests/test_filters.py
+@@ -36,7 +36,8 @@ async def test_in(self):
+ 
+     async def test_in_empty(self):
+         self.assertEqual(
+-            await CharFields.filter(char__in=[]).values_list("char", flat=True), [],
++            await CharFields.filter(char__in=[]).values_list("char", flat=True),
++            [],
+         )
+ 
+     async def test_not_in(self):
+diff --git a/tests/test_model_methods.py b/tests/test_model_methods.py
+index 9a014e4a6..284fae1ed 100644
+--- a/tests/test_model_methods.py
++++ b/tests/test_model_methods.py
+@@ -223,10 +223,10 @@ async def test_update_from_dict(self):
+         self.assertNotEqual(orig_modified, evt1.modified)
+ 
+         with self.assertRaises(ConfigurationError):
+-            evt2.update_from_dict({"participants": []})
++            await evt2.update_from_dict({"participants": []})
+ 
+         with self.assertRaises(ValueError):
+-            evt2.update_from_dict({"alias": "foo"})
++            await evt2.update_from_dict({"alias": "foo"})
+ 
+     async def test_index_access(self):
+         obj = await self.cls[self.mdl.pk]
+diff --git a/tests/test_queryset.py b/tests/test_queryset.py
+index 0b6bef912..2a8cb5168 100644
+--- a/tests/test_queryset.py
++++ b/tests/test_queryset.py
+@@ -336,11 +336,13 @@ async def test_select_for_update(self):
+         dialect = self.db.schema_generator.DIALECT
+         if dialect == "postgres":
+             self.assertEqual(
+-                sql, 'SELECT "id" "id" FROM "intfields" WHERE "id"=1 FOR UPDATE',
++                sql,
++                'SELECT "id" "id" FROM "intfields" WHERE "id"=1 FOR UPDATE',
+             )
+         elif dialect == "mysql":
+             self.assertEqual(
+-                sql, "SELECT `id` `id` FROM `intfields` WHERE `id`=1 FOR UPDATE",
++                sql,
++                "SELECT `id` `id` FROM `intfields` WHERE `id`=1 FOR UPDATE",
+             )
+ 
+     async def test_select_related(self):
+diff --git a/tests/test_update.py b/tests/test_update.py
+index 8cedd2903..29bb744ef 100644
+--- a/tests/test_update.py
++++ b/tests/test_update.py
+@@ -1,7 +1,11 @@
+ from datetime import datetime, timedelta
++from typing import Any
+ 
+-from tests.testmodels import DefaultUpdate, Event, Tournament
++from pypika.terms import Function
++
++from tests.testmodels import DefaultUpdate, Event, IntFields, JSONFields, Tournament
+ from tortoise.contrib import test
++from tortoise.expressions import F
+ 
+ 
+ class TestUpdate(test.TestCase):
+@@ -32,3 +36,46 @@ async def test_update_relation(self):
+         await Event.all().update(tournament=tournament_second)
+         event = await Event.first()
+         self.assertEqual(event.tournament_id, tournament_second.id)
++
++    @test.requireCapability(dialect="mysql")
++    @test.requireCapability(dialect="sqlite")
++    async def test_update_with_custom_function(self):
++        class JsonSet(Function):
++            def __init__(self, field: F, expression: str, value: Any):
++                super().__init__("JSON_SET", field, expression, value)
++
++        json = await JSONFields.create(data={})
++        self.assertEqual(json.data_default, {"a": 1})
++
++        json.data_default = JsonSet(F("data_default"), "$.a", 2)
++        await json.save()
++
++        json_update = await JSONFields.get(pk=json.pk)
++        self.assertEqual(json_update.data_default, {"a": 2})
++
++        await JSONFields.filter(pk=json.pk).update(
++            data_default=JsonSet(F("data_default"), "$.a", 3)
++        )
++        json_update = await JSONFields.get(pk=json.pk)
++        self.assertEqual(json_update.data_default, {"a": 3})
++
++    async def test_refresh_from_db(self):
++        int_field = await IntFields.create(intnum=1, intnum_null=2)
++        int_field_in_db = await IntFields.get(pk=int_field.pk)
++        int_field_in_db.intnum = F("intnum") + 1
++        await int_field_in_db.save(update_fields=["intnum"])
++        self.assertIsNot(int_field_in_db.intnum, 2)
++        self.assertIs(int_field_in_db.intnum_null, 2)
++
++        await int_field_in_db.refresh_from_db(fields=["intnum"])
++        self.assertIs(int_field_in_db.intnum, 2)
++        self.assertIs(int_field_in_db.intnum_null, 2)
++
++        int_field_in_db.intnum = F("intnum") + 1
++        await int_field_in_db.save()
++        self.assertIsNot(int_field_in_db.intnum, 3)
++        self.assertIs(int_field_in_db.intnum_null, 2)
++
++        await int_field_in_db.refresh_from_db()
++        self.assertIs(int_field_in_db.intnum, 3)
++        self.assertIs(int_field_in_db.intnum_null, 2)
+diff --git a/tests/testmodels.py b/tests/testmodels.py
+index 94103e696..3be1b3f28 100644
+--- a/tests/testmodels.py
++++ b/tests/testmodels.py
+@@ -695,9 +695,7 @@ class DefaultModel(Model):
+     bool_default = fields.BooleanField(default=True)
+     char_default = fields.CharField(max_length=20, default="tortoise")
+     date_default = fields.DateField(default=datetime.date.fromisoformat("2020-05-20"))
+-    datetime_default = fields.DatetimeField(
+-        default=datetime.datetime.fromisoformat("2020-05-20 00:00:00")
+-    )
++    datetime_default = fields.DatetimeField(default=datetime.datetime(year=2020, month=5, day=20))
+ 
+ 
+ class RequiredPKModel(Model):

@@ -9,7 +9,7 @@ repos:
         types: [python]
         pass_filenames: true
         always_run: false
-        exclude: ^legacy/
+        exclude: ^(legacy/|assay/|tests/fixtures/milo_bundles/)
       - id: ruff-check
         name: Ruff lint
         entry: uv
@@ -18,7 +18,7 @@ repos:
         types: [python]
         pass_filenames: true
         always_run: false
-        exclude: ^legacy/
+        exclude: ^(legacy/|assay/|tests/fixtures/milo_bundles/)
       - id: pycodestyle
         name: PEP8 style check (pycodestyle)
         entry: uv
@@ -27,7 +27,7 @@ repos:
         types: [python]
         pass_filenames: true
         always_run: false
-        exclude: ^legacy/
+        exclude: ^(legacy/|assay/|tests/fixtures/milo_bundles/)
       - id: pyright
         name: Type check with Pyright (strict)
         entry: uv
@@ -36,4 +36,4 @@ repos:
         types: [python]
         pass_filenames: true
         always_run: false
-        exclude: ^legacy/
+        exclude: ^(legacy/|assay/|tests/fixtures/milo_bundles/)

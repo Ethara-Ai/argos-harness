@@ -20,23 +20,40 @@ class TestRunEvalWiring:
     def test_rubric_block_is_opt_in(self, run_eval_src: str):
         assert "RUBRIC_ENABLE:-0" in run_eval_src  # default OFF: zero behavior change
 
-    def test_attach_runs_before_judge(self, run_eval_src: str):
-        attach_pos = run_eval_src.index("multiswebench-rubric attach")
-        judge_pos = run_eval_src.index("multiswebench-rubric judge")
-        assert attach_pos < judge_pos
+    def test_milo_pipeline_order(self, run_eval_src: str):
+        """export-bundle -> author-milo (conditional) -> assay judge -> score."""
+        export = run_eval_src.index("multiswebench-rubric export-bundle")
+        author = run_eval_src.index("multiswebench-rubric author-milo")
+        judge = run_eval_src.index('judge --task "$DS_UUID"')
+        score = run_eval_src.index('score --task "$DS_UUID"')
+        assert export < author < judge < score
 
     def test_rubric_block_sits_between_harbor_and_stage_dataset(
         self, run_eval_src: str
     ):
         harbor_ok = run_eval_src.index('log "harbor: ok -> $HARBOR_OUT"')
-        rubric = run_eval_src.index("multiswebench-rubric attach")
+        rubric = run_eval_src.index("multiswebench-rubric export-bundle")
         stage = run_eval_src.index('stage_dataset "$DATASET_TAG"')
         assert harbor_ok < rubric < stage
 
-    def test_judge_gets_run_base_for_git_patch(self, run_eval_src: str):
-        judge_call = run_eval_src[run_eval_src.index("multiswebench-rubric judge") :]
-        judge_call = judge_call[: judge_call.index("rrc=$?")]
-        assert '--run-base "$RUN_BASE"' in judge_call
+    def test_authoring_is_once_per_task(self, run_eval_src: str):
+        # author-milo is guarded on the bundle not yet carrying judged R-items
+        guard = run_eval_src.index('grep -q \'"mode": "judged"\'')
+        author = run_eval_src.index("multiswebench-rubric author-milo")
+        assert guard < author
+
+    def test_assay_calls_carry_council_and_proxy_env(self, run_eval_src: str):
+        assert "ASSAY_COUNCIL=" in run_eval_src
+        assert "ASSAY_PROXY=" in run_eval_src
+        # score must be told where judge wrote the verdict store
+        score_call = run_eval_src[run_eval_src.index('score --task "$DS_UUID"') :]
+        score_call = score_call[: score_call.index("rrc=$?")]
+        assert '--verdicts "${MILO_DEST}/verdicts"' in score_call
+        assert "--write" in score_call
+
+    def test_wcb_delivery_path_is_retired(self, run_eval_src: str):
+        assert "multiswebench-rubric attach" not in run_eval_src
+        assert "multiswebench-rubric judge" not in run_eval_src
 
     def test_syntax_parses(self):
         import subprocess

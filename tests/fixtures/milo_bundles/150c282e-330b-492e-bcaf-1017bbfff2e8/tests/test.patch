@@ -1,0 +1,761 @@
+diff --git a/examples/fastapi/_tests.py b/examples/fastapi/_tests.py
+index 5301d8404..1e6f3d58a 100644
+--- a/examples/fastapi/_tests.py
++++ b/examples/fastapi/_tests.py
+@@ -21,7 +21,7 @@ def client() -> Generator:
+ 
+ @pytest.fixture(scope="module")
+ def event_loop(client: TestClient) -> Generator:
+-    yield client.task.get_loop()
++    yield client.task.get_loop()  # type: ignore
+ 
+ 
+ def test_create_user(client: TestClient, event_loop: asyncio.AbstractEventLoop):  # nosec
+diff --git a/tests/backends/test_connection_params.py b/tests/backends/test_connection_params.py
+index dee3d3517..613dae2de 100644
+--- a/tests/backends/test_connection_params.py
++++ b/tests/backends/test_connection_params.py
+@@ -1,5 +1,6 @@
++from unittest.mock import AsyncMock, patch
++
+ import asyncpg
+-from asynctest.mock import CoroutineMock, patch
+ 
+ from tortoise import Tortoise
+ from tortoise.contrib import test
+@@ -7,7 +8,7 @@
+ 
+ class TestConnectionParams(test.TestCase):
+     async def test_mysql_connection_params(self):
+-        with patch("asyncmy.create_pool", new=CoroutineMock()) as mysql_connect:
++        with patch("asyncmy.create_pool", new=AsyncMock()) as mysql_connect:
+             await Tortoise._init_connections(
+                 {
+                     "models": {
+@@ -42,7 +43,7 @@ async def test_mysql_connection_params(self):
+ 
+     async def test_postres_connection_params(self):
+         try:
+-            with patch("asyncpg.create_pool", new=CoroutineMock()) as asyncpg_connect:
++            with patch("asyncpg.create_pool", new=AsyncMock()) as asyncpg_connect:
+                 await Tortoise._init_connections(
+                     {
+                         "models": {
+diff --git a/tests/backends/test_mysql.py b/tests/backends/test_mysql.py
+index 03a0275cc..f24af9613 100644
+--- a/tests/backends/test_mysql.py
++++ b/tests/backends/test_mysql.py
+@@ -15,7 +15,7 @@ async def setUp(self):
+         if self.db_config["connections"]["models"]["engine"] != "tortoise.backends.mysql":
+             raise test.SkipTest("MySQL only")
+ 
+-    async def tearDown(self) -> None:
++    async def asyncTearDown(self) -> None:
+         if Tortoise._inited:
+             await Tortoise._drop_databases()
+ 
+diff --git a/tests/backends/test_postgres.py b/tests/backends/test_postgres.py
+index 321b3b98d..7f3259a17 100644
+--- a/tests/backends/test_postgres.py
++++ b/tests/backends/test_postgres.py
+@@ -17,7 +17,7 @@ async def setUp(self):
+         if self.db_config["connections"]["models"]["engine"] != "tortoise.backends.asyncpg":
+             raise test.SkipTest("PostgreSQL only")
+ 
+-    async def tearDown(self) -> None:
++    async def asyncTearDown(self) -> None:
+         if Tortoise._inited:
+             await Tortoise._drop_databases()
+ 
+diff --git a/tests/contrib/test_functions.py b/tests/contrib/test_functions.py
+new file mode 100644
+index 000000000..e44ff7018
+--- /dev/null
++++ b/tests/contrib/test_functions.py
+@@ -0,0 +1,36 @@
++from tests.testmodels import IntFields
++from tortoise import Tortoise
++from tortoise.contrib import test
++from tortoise.contrib.mysql.functions import Rand
++from tortoise.contrib.postgres.functions import Random as PostgresRandom
++from tortoise.contrib.sqlite.functions import Random as SqliteRandom
++
++
++class TestFunction(test.TestCase):
++    async def setUp(self):
++        self.intfields = [await IntFields.create(intnum=val) for val in range(10)]
++        self.db = Tortoise.get_connection("models")
++
++    @test.requireCapability(dialect="mysql")
++    async def test_mysql_func_rand(self):
++        sql = IntFields.all().annotate(randnum=Rand()).values("intnum", "randnum").sql()
++        expected_sql = "SELECT `intnum` `intnum`,RAND() `randnum` FROM `intfields`"
++        self.assertEqual(sql, expected_sql)
++
++    @test.requireCapability(dialect="mysql")
++    async def test_mysql_func_rand_with_seed(self):
++        sql = IntFields.all().annotate(randnum=Rand(0)).values("intnum", "randnum").sql()
++        expected_sql = "SELECT `intnum` `intnum`,RAND(0) `randnum` FROM `intfields`"
++        self.assertEqual(sql, expected_sql)
++
++    @test.requireCapability(dialect="postgres")
++    async def test_postgres_func_rand(self):
++        sql = IntFields.all().annotate(randnum=PostgresRandom()).values("intnum", "randnum").sql()
++        expected_sql = 'SELECT "intnum" "intnum",RANDOM() "randnum" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    @test.requireCapability(dialect="sqlite")
++    async def test_sqlite_func_rand(self):
++        sql = IntFields.all().annotate(randnum=SqliteRandom()).values("intnum", "randnum").sql()
++        expected_sql = 'SELECT "intnum" "intnum",RANDOM() "randnum" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
+diff --git a/tests/contrib/test_pydantic.py b/tests/contrib/test_pydantic.py
+index 59dcecbd3..20d023209 100644
+--- a/tests/contrib/test_pydantic.py
++++ b/tests/contrib/test_pydantic.py
+@@ -6,7 +6,7 @@
+ 
+ 
+ class TestPydantic(test.TestCase):
+-    async def setUp(self) -> None:
++    async def asyncSetUp(self) -> None:
+         self.Event_Pydantic = pydantic_model_creator(Event)
+         self.Event_Pydantic_List = pydantic_queryset_creator(Event)
+         self.Tournament_Pydantic = pydantic_model_creator(Tournament)
+@@ -1035,7 +1035,7 @@ async def test_json_field(self):
+ 
+ 
+ class TestPydanticCycle(test.TestCase):
+-    async def setUp(self) -> None:
++    async def asyncSetUp(self) -> None:
+         self.Employee_Pydantic = pydantic_model_creator(Employee)
+ 
+         self.root = await Employee.create(name="Root")
+diff --git a/tests/model_setup/test__models__.py b/tests/model_setup/test__models__.py
+index 1beaeee3c..90ce365bd 100644
+--- a/tests/model_setup/test__models__.py
++++ b/tests/model_setup/test__models__.py
+@@ -3,8 +3,7 @@
+ """
+ 
+ import re
+-
+-from asynctest.mock import CoroutineMock, patch
++from unittest.mock import AsyncMock, patch
+ 
+ from tortoise import Tortoise
+ from tortoise.contrib import test
+@@ -35,7 +34,7 @@ async def init_for(self, module: str, safe=False) -> None:
+         if self.engine != "tortoise.backends.sqlite":
+             raise test.SkipTest("sqlite only")
+         with patch(
+-            "tortoise.backends.sqlite.client.SqliteClient.create_connection", new=CoroutineMock()
++            "tortoise.backends.sqlite.client.SqliteClient.create_connection", new=AsyncMock()
+         ):
+             await Tortoise.init(
+                 {
+diff --git a/tests/schema/test_generate_schema.py b/tests/schema/test_generate_schema.py
+index 64584caa0..17aafc939 100644
+--- a/tests/schema/test_generate_schema.py
++++ b/tests/schema/test_generate_schema.py
+@@ -1,7 +1,6 @@
+ # pylint: disable=C0301
+ import re
+-
+-from asynctest.mock import CoroutineMock, patch
++from unittest.mock import AsyncMock, patch
+ 
+ from tortoise import Tortoise
+ from tortoise.contrib import test
+@@ -30,7 +29,7 @@ async def tearDown(self):
+ 
+     async def init_for(self, module: str, safe=False) -> None:
+         with patch(
+-            "tortoise.backends.sqlite.client.SqliteClient.create_connection", new=CoroutineMock()
++            "tortoise.backends.sqlite.client.SqliteClient.create_connection", new=AsyncMock()
+         ):
+             await Tortoise.init(
+                 {
+@@ -396,7 +395,7 @@ async def test_m2m_no_auto_create(self):
+ class TestGenerateSchemaMySQL(TestGenerateSchema):
+     async def init_for(self, module: str, safe=False) -> None:
+         try:
+-            with patch("asyncmy.create_pool", new=CoroutineMock()):
++            with patch("asyncmy.create_pool", new=AsyncMock()):
+                 await Tortoise.init(
+                     {
+                         "connections": {
+@@ -776,7 +775,7 @@ async def test_m2m_no_auto_create(self):
+ class TestGenerateSchemaPostgresSQL(TestGenerateSchema):
+     async def init_for(self, module: str, safe=False) -> None:
+         try:
+-            with patch("asyncpg.create_pool", new=CoroutineMock()):
++            with patch("asyncpg.create_pool", new=AsyncMock()):
+                 await Tortoise.init(
+                     {
+                         "connections": {
+diff --git a/tests/test_aggregation.py b/tests/test_aggregation.py
+index 41cd8d42d..cb317c5b7 100644
+--- a/tests/test_aggregation.py
++++ b/tests/test_aggregation.py
+@@ -1,8 +1,8 @@
+ from tests.testmodels import Author, Book, Event, MinRelation, Team, Tournament
+ from tortoise.contrib import test
+ from tortoise.exceptions import ConfigurationError
++from tortoise.expressions import Q
+ from tortoise.functions import Avg, Coalesce, Concat, Count, Lower, Max, Min, Sum, Trim
+-from tortoise.query_utils import Q
+ 
+ 
+ class TestAggregation(test.TestCase):
+diff --git a/tests/test_bulk.py b/tests/test_bulk.py
+index 62a9046bc..53c7e439a 100644
+--- a/tests/test_bulk.py
++++ b/tests/test_bulk.py
+@@ -90,3 +90,10 @@ async def test_bulk_create_uuidpk_in_transaction_fail(self):
+         with self.assertRaises(IntegrityError):
+             async with in_transaction():
+                 await UUIDPkModel.bulk_create([UUIDPkModel(id=val) for _ in range(10)])
++
++    async def test_bulk_create_ignore_conflicts(self):
++        name1 = UniqueName(name="name1")
++        name2 = UniqueName(name="name2")
++        await UniqueName.bulk_create([name1, name2], ignore_conflicts=True)
++        with self.assertRaises(IntegrityError):
++            await UniqueName.bulk_create([name1, name2])
+diff --git a/tests/test_case_when.py b/tests/test_case_when.py
+new file mode 100644
+index 000000000..b7e6db9c4
+--- /dev/null
++++ b/tests/test_case_when.py
+@@ -0,0 +1,132 @@
++from tests.testmodels import IntFields
++from tortoise import Tortoise
++from tortoise.contrib import test
++from tortoise.expressions import Case, F, Q, When
++from tortoise.functions import Coalesce
++
++
++class TestCaseWhen(test.TestCase):
++    async def setUp(self):
++        self.intfields = [await IntFields.create(intnum=val) for val in range(10)]
++        self.db = Tortoise.get_connection("models")
++
++    async def test_single_when(self):
++        category = Case(When(intnum__gte=8, then="big"), default="default")
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN 'big' ELSE 'default' END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN \'big\' ELSE \'default\' END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_multi_when(self):
++        category = Case(
++            When(intnum__gte=8, then="big"), When(intnum__lte=2, then="small"), default="default"
++        )
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN 'big' WHEN `intnum`<=2 THEN 'small' ELSE 'default' END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN \'big\' WHEN "intnum"<=2 THEN \'small\' ELSE \'default\' END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_q_object_when(self):
++        category = Case(When(Q(intnum__gt=2, intnum__lt=8), then="middle"), default="default")
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>2 AND `intnum`<8 THEN 'middle' ELSE 'default' END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">2 AND "intnum"<8 THEN \'middle\' ELSE \'default\' END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_F_then(self):
++        category = Case(When(intnum__gte=8, then=F("intnum_null")), default="default")
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN `intnum_null` ELSE 'default' END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN "intnum_null" ELSE \'default\' END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_AE_then(self):
++        # AE: ArithmeticExpression
++        category = Case(When(intnum__gte=8, then=F("intnum") + 1), default="default")
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN `intnum`+1 ELSE 'default' END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN "intnum"+1 ELSE \'default\' END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_func_then(self):
++        category = Case(When(intnum__gte=8, then=Coalesce("intnum_null", 10)), default="default")
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN COALESCE(`intnum_null`,10) ELSE 'default' END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN COALESCE("intnum_null",10) ELSE \'default\' END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_F_default(self):
++        category = Case(When(intnum__gte=8, then="big"), default=F("intnum_null"))
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN 'big' ELSE `intnum_null` END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN \'big\' ELSE "intnum_null" END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_AE_default(self):
++        # AE: ArithmeticExpression
++        category = Case(When(intnum__gte=8, then=8), default=F("intnum") + 1)
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN 8 ELSE `intnum`+1 END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN 8 ELSE "intnum"+1 END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_func_default(self):
++        category = Case(When(intnum__gte=8, then=8), default=Coalesce("intnum_null", 10))
++        sql = IntFields.all().annotate(category=category).values("intnum", "category").sql()
++
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum`,CASE WHEN `intnum`>=8 THEN 8 ELSE COALESCE(`intnum_null`,10) END `category` FROM `intfields`"
++        else:
++            expected_sql = 'SELECT "intnum" "intnum",CASE WHEN "intnum">=8 THEN 8 ELSE COALESCE("intnum_null",10) END "category" FROM "intfields"'
++        self.assertEqual(sql, expected_sql)
++
++    async def test_case_when_in_where(self):
++        category = Case(
++            When(intnum__gte=8, then="big"), When(intnum__lte=2, then="small"), default="middle"
++        )
++        sql = (
++            IntFields.all()
++            .annotate(category=category)
++            .filter(category__in=["big", "small"])
++            .values("intnum")
++            .sql()
++        )
++        dialect = self.db.schema_generator.DIALECT
++        if dialect == "mysql":
++            expected_sql = "SELECT `intnum` `intnum` FROM `intfields` WHERE CASE WHEN `intnum`>=8 THEN 'big' WHEN `intnum`<=2 THEN 'small' ELSE 'middle' END IN ('big','small')"
++        else:
++            expected_sql = "SELECT \"intnum\" \"intnum\" FROM \"intfields\" WHERE CASE WHEN \"intnum\">=8 THEN 'big' WHEN \"intnum\"<=2 THEN 'small' ELSE 'middle' END IN ('big','small')"
++        self.assertEqual(sql, expected_sql)
+diff --git a/tests/test_default.py b/tests/test_default.py
+index 71b0f26ce..00a7b2212 100644
+--- a/tests/test_default.py
++++ b/tests/test_default.py
+@@ -11,7 +11,7 @@
+ 
+ 
+ class TestDefault(test.TestCase):
+-    async def setUp(self) -> None:
++    async def asyncSetUp(self) -> None:
+         connection = self.__db__
+         if isinstance(connection, MySQLClient):
+             await connection.execute_query(
+diff --git a/tests/test_filtering.py b/tests/test_filtering.py
+index 85f33bf1e..76678bc99 100644
+--- a/tests/test_filtering.py
++++ b/tests/test_filtering.py
+@@ -2,9 +2,8 @@
+ 
+ from tests.testmodels import DatetimeFields, Event, IntFields, Reporter, Team, Tournament
+ from tortoise.contrib import test
+-from tortoise.expressions import F
++from tortoise.expressions import F, Q
+ from tortoise.functions import Coalesce, Count, Length, Lower, Max, Trim, Upper
+-from tortoise.query_utils import Q
+ 
+ 
+ class TestFiltering(test.TestCase):
+diff --git a/tests/test_group_by.py b/tests/test_group_by.py
+index c4cd5078b..bd16f8438 100644
+--- a/tests/test_group_by.py
++++ b/tests/test_group_by.py
+@@ -4,7 +4,7 @@
+ 
+ 
+ class TestGroupBy(test.TestCase):
+-    async def setUp(self) -> None:
++    async def asyncSetUp(self) -> None:
+         self.a1 = await Author.create(name="author1")
+         self.a2 = await Author.create(name="author2")
+         for i in range(10):
+diff --git a/tests/test_only.py b/tests/test_only.py
+index e6bddf832..a969e8b23 100644
+--- a/tests/test_only.py
++++ b/tests/test_only.py
+@@ -4,7 +4,7 @@
+ 
+ 
+ class TestOnlyStraight(test.TestCase):
+-    async def setUp(self) -> None:
++    async def asyncSetUp(self) -> None:
+         self.model = StraightFields
+         self.instance = await self.model.create(chars="Test")
+ 
+@@ -59,6 +59,6 @@ async def test_partial_save_with_pk(self):
+ 
+ 
+ class TestOnlySource(TestOnlyStraight):
+-    async def setUp(self) -> None:
++    async def asyncSetUp(self) -> None:
+         self.model = SourceFields  # type: ignore
+         self.instance = await self.model.create(chars="Test")
+diff --git a/tests/test_q.py b/tests/test_q.py
+index 8ef9a383e..82e78f759 100644
+--- a/tests/test_q.py
++++ b/tests/test_q.py
+@@ -3,7 +3,7 @@
+ from tests.testmodels import CharFields, IntFields
+ from tortoise.contrib.test import TestCase
+ from tortoise.exceptions import OperationalError
+-from tortoise.query_utils import Q
++from tortoise.expressions import Q
+ 
+ 
+ class TestQ(_TestCase):
+@@ -96,57 +96,57 @@ def test_q_partial_or(self):
+ class TestQCall(TestCase):
+     def test_q_basic(self):
+         q = Q(id=8)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id"=8')
+ 
+     def test_q_basic_and(self):
+         q = Q(join_type="AND", id=8)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id"=8')
+ 
+     def test_q_basic_or(self):
+         q = Q(join_type="OR", id=8)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id"=8')
+ 
+     def test_q_multiple_and(self):
+         q = Q(join_type="AND", id__gt=8, id__lt=10)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">8 AND "id"<10')
+ 
+     def test_q_multiple_or(self):
+         q = Q(join_type="OR", id__gt=8, id__lt=10)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">8 OR "id"<10')
+ 
+     def test_q_multiple_and2(self):
+         q = Q(join_type="AND", id=8, intnum=80)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id"=8 AND "intnum"=80')
+ 
+     def test_q_multiple_or2(self):
+         q = Q(join_type="OR", id=8, intnum=80)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id"=8 OR "intnum"=80')
+ 
+     def test_q_complex_int(self):
+         q = Q(Q(intnum=80), Q(id__lt=5, id__gt=50, join_type="OR"), join_type="AND")
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"intnum"=80 AND ("id"<5 OR "id">50)')
+ 
+     def test_q_complex_int2(self):
+         q = Q(Q(intnum="80"), Q(Q(id__lt="5"), Q(id__gt="50"), join_type="OR"), join_type="AND")
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"intnum"=80 AND ("id"<5 OR "id">50)')
+ 
+     def test_q_complex_int3(self):
+         q = Q(Q(id__lt=5, id__gt=50, join_type="OR"), join_type="AND", intnum=80)
+-        r = q.resolve(IntFields, {}, {}, IntFields._meta.basequery)
++        r = q.resolve(IntFields, IntFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"intnum"=80 AND ("id"<5 OR "id">50)')
+ 
+     def test_q_complex_char(self):
+         q = Q(Q(char_null=80), ~Q(char__lt=5, char__gt=50, join_type="OR"), join_type="AND")
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(
+             r.where_criterion.get_sql(),
+             "\"char_null\"='80' AND NOT (\"char\"<'5' OR \"char\">'50')",
+@@ -158,7 +158,7 @@ def test_q_complex_char2(self):
+             ~Q(Q(char__lt="5"), Q(char__gt="50"), join_type="OR"),
+             join_type="AND",
+         )
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(
+             r.where_criterion.get_sql(),
+             "\"char_null\"='80' AND NOT (\"char\"<'5' OR \"char\">'50')",
+@@ -166,7 +166,7 @@ def test_q_complex_char2(self):
+ 
+     def test_q_complex_char3(self):
+         q = Q(~Q(char__lt=5, char__gt=50, join_type="OR"), join_type="AND", char_null=80)
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(
+             r.where_criterion.get_sql(),
+             "\"char_null\"='80' AND NOT (\"char\"<'5' OR \"char\">'50')",
+@@ -174,30 +174,30 @@ def test_q_complex_char3(self):
+ 
+     def test_q_with_blank_and(self):
+         q = Q(Q(id__gt=5), Q(), join_type=Q.AND)
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">5')
+ 
+     def test_q_with_blank_or(self):
+         q = Q(Q(id__gt=5), Q(), join_type=Q.OR)
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">5')
+ 
+     def test_q_with_blank_and2(self):
+         q = Q(id__gt=5) & Q()
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">5')
+ 
+     def test_q_with_blank_or2(self):
+         q = Q(id__gt=5) | Q()
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">5')
+ 
+     def test_q_with_blank_and3(self):
+         q = Q() & Q(id__gt=5)
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">5')
+ 
+     def test_q_with_blank_or3(self):
+         q = Q() | Q(id__gt=5)
+-        r = q.resolve(CharFields, {}, {}, CharFields._meta.basequery)
++        r = q.resolve(CharFields, CharFields._meta.basequery)
+         self.assertEqual(r.where_criterion.get_sql(), '"id">5')
+diff --git a/tests/test_relations.py b/tests/test_relations.py
+index f84f1f17a..f35d06424 100644
+--- a/tests/test_relations.py
++++ b/tests/test_relations.py
+@@ -371,7 +371,7 @@ class TestDoubleFK(test.TestCase):
+         r'[`"]doublefk__right[`"].[`"]id[`"]=[`"]doublefk[`"].[`"]right_id[`"]'
+     )
+ 
+-    async def setUp(self) -> None:
++    async def asyncSetUp(self) -> None:
+         one = await DoubleFK.create(name="one")
+         two = await DoubleFK.create(name="two")
+         self.middle = await DoubleFK.create(name="middle", left=one, right=two)
+diff --git a/tests/test_source_field.py b/tests/test_source_field.py
+index 888984d06..1be574bd8 100644
+--- a/tests/test_source_field.py
++++ b/tests/test_source_field.py
+@@ -6,9 +6,8 @@
+ """
+ from tests.testmodels import NumberSourceField, SourceFields, StraightFields
+ from tortoise.contrib import test
+-from tortoise.expressions import F
++from tortoise.expressions import F, Q
+ from tortoise.functions import Coalesce, Count, Length, Lower, Trim, Upper
+-from tortoise.query_utils import Q
+ 
+ 
+ class StraightFieldTests(test.TestCase):
+diff --git a/tests/test_update.py b/tests/test_update.py
+index e0e0e1d3e..cae507b0f 100644
+--- a/tests/test_update.py
++++ b/tests/test_update.py
+@@ -1,9 +1,10 @@
++import uuid
+ from datetime import datetime, timedelta
+ from typing import Any
+ 
+ from pypika.terms import Function
+ 
+-from tests.testmodels import DefaultUpdate, Event, IntFields, JSONFields, Tournament
++from tests.testmodels import DefaultUpdate, Event, IntFields, JSONFields, Tournament, UUIDFields
+ from tortoise.contrib import test
+ from tortoise.expressions import F
+ 
+@@ -27,6 +28,18 @@ async def test_bulk_update(self):
+         self.assertEqual((await Tournament.get(pk=objs[0].pk)).name, "0")
+         self.assertEqual((await Tournament.get(pk=objs[1].pk)).name, "1")
+ 
++    async def test_bulk_update_pk_uuid(self):
++        objs = [
++            await UUIDFields.create(data=uuid.uuid4()),
++            await UUIDFields.create(data=uuid.uuid4()),
++        ]
++        objs[0].data = str(uuid.uuid4())
++        objs[1].data = str(uuid.uuid4())
++        rows_affected = await UUIDFields.bulk_update(objs, fields=["data"])
++        self.assertEqual(rows_affected, 2)
++        self.assertEqual((await UUIDFields.get(pk=objs[0].pk)).data, objs[0].data)
++        self.assertEqual((await UUIDFields.get(pk=objs[1].pk)).data, objs[1].data)
++
+     async def test_update_auto_now(self):
+         obj = await DefaultUpdate.create()
+ 
+diff --git a/tests/test_validators.py b/tests/test_validators.py
+index 0034a5a4e..c49609af4 100644
+--- a/tests/test_validators.py
++++ b/tests/test_validators.py
+@@ -24,7 +24,7 @@ async def test_validator_max_value(self):
+         # max value is 20
+         with self.assertRaises(ValidationError):
+             await ValidatorModel.create(max_value=21)
+-        await ValidatorModel.create(min_value=20)
++        await ValidatorModel.create(max_value=20)
+ 
+     async def test_validator_ipv4(self):
+         with self.assertRaises(ValidationError):
+diff --git a/tortoise/contrib/test/__init__.py b/tortoise/contrib/test/__init__.py
+index 8f31a4fee..6e7010afc 100644
+--- a/tortoise/contrib/test/__init__.py
++++ b/tortoise/contrib/test/__init__.py
+@@ -8,10 +8,6 @@
+ from unittest import SkipTest, expectedFailure, skip, skipIf, skipUnless
+ from unittest.result import TestResult
+ 
+-from asynctest import TestCase as _TestCase
+-from asynctest import _fail_on
+-from asynctest.case import _Policy
+-
+ from tortoise import Model, Tortoise
+ from tortoise.backends.base.config_generator import generate_config as _generate_config
+ from tortoise.exceptions import DBConnectionError
+@@ -155,7 +151,7 @@ def env_initializer() -> None:  # pragma: nocoverage
+     initializer(modules, db_url=db_url, app_label=app_label)
+ 
+ 
+-class SimpleTestCase(_TestCase):  # type: ignore
++class SimpleTestCase(unittest.IsolatedAsyncioTestCase):
+     """
+     The Tortoise base test class.
+ 
+@@ -175,15 +171,8 @@ class SimpleTestCase(_TestCase):  # type: ignore
+     def _init_loop(self) -> None:
+         if self.use_default_loop:
+             self.loop = _LOOP
+-            loop = None
+         else:  # pragma: nocoverage
+-            loop = self.loop = asyncio.new_event_loop()
+-
+-        policy = _Policy(asyncio.get_event_loop_policy(), loop, self.forbid_get_event_loop)
+-
+-        asyncio.set_event_loop_policy(policy)
+-
+-        self.loop = self._patch_loop(self.loop)
++            self.loop = asyncio.new_event_loop()
+ 
+     async def _setUpDB(self) -> None:
+         pass
+@@ -193,15 +182,9 @@ async def _tearDownDB(self) -> None:
+ 
+     async def _setUp(self) -> None:
+ 
+-        # initialize post-test checks
+-        test = getattr(self, self._testMethodName)
+-        checker = getattr(test, _fail_on._FAIL_ON_ATTR, None)
+-        self._checker = checker or _fail_on._fail_on()
+-        self._checker.before_test(self)
+-
+         await self._setUpDB()
+         if asyncio.iscoroutinefunction(self.setUp):
+-            await self.setUp()
++            await self.asyncSetUp()
+         else:
+             self.setUp()
+ 
+@@ -210,7 +193,7 @@ async def _setUp(self) -> None:
+ 
+     async def _tearDown(self) -> None:
+         if asyncio.iscoroutinefunction(self.tearDown):
+-            await self.tearDown()
++            await self.asyncTearDown()
+         else:
+             self.tearDown()
+         await self._tearDownDB()
+@@ -218,9 +201,6 @@ async def _tearDown(self) -> None:
+         Tortoise._connections = {}
+         Tortoise._inited = False
+ 
+-        # post-test checks
+-        self._checker.check_test(self)
+-
+     # Override unittest.TestCase methods which call setUp() and tearDown()
+     def run(self, result: Optional[TestResult] = None) -> Optional[TestResult]:
+         orig_result = result
+@@ -254,19 +234,10 @@ def run(self, result: Optional[TestResult] = None) -> Optional[TestResult]:
+ 
+             self.loop.run_until_complete(self._run_outcome(outcome, expecting_failure, testMethod))
+ 
+-            self.loop.run_until_complete(self.doCleanups())
+-            self._unset_loop()
+             for test, reason in outcome.skipped:
+                 self._addSkip(result, test, reason)
+-            self._feedErrorsToResult(result, outcome.errors)
+             if outcome.success:
+-                if expecting_failure:
+-                    if outcome.expectedFailure:
+-                        self._addExpectedFailure(result, outcome.expectedFailure)
+-                    else:  # pragma: nocoverage
+-                        self._addUnexpectedSuccess(result)
+-                else:
+-                    result.addSuccess(self)
++                result.addSuccess(self)
+             return result
+         finally:
+             result.stopTest(self)
+diff --git a/tortoise/contrib/test/nose2.py b/tortoise/contrib/test/nose2.py
+index 07cc90f34..b140036d3 100644
+--- a/tortoise/contrib/test/nose2.py
++++ b/tortoise/contrib/test/nose2.py
+@@ -31,9 +31,9 @@ def __init__(self) -> None:
+         group.add_argument(
+             "--app-label",
+             action="store",
+-            default="",
+-            metavar="URI",
+-            dest="db_url",
++            default="models",
++            metavar="APP_LABEL",
++            dest="app_label",
+             help="The name of the APP to initialise the modules in",
+         )
+         group.add_argument(
+@@ -49,6 +49,7 @@ def handleArgs(self, event: Event) -> None:
+         """Get our options in order command line, config file, hard coded."""
+         self.db_url = event.args.db_url or self.db_url
+         self.db_modules = event.args.db_modules or self.db_modules
++        self.app_label = event.args.app_label or self.app_label
+ 
+     def startTestRun(self, event: Event) -> None:
+         initializer(self.db_modules, db_url=self.db_url, app_label=self.app_label)

@@ -1389,29 +1389,45 @@ PYSCRIPT
                 log "harbor: WARN conversion failed (exit $hrc, see ${RUN_BASE}/harbor.log)"
             else
                 log "harbor: ok -> $HARBOR_OUT"
-                # ── Rubric process-scoring (opt-in: RUBRIC_ENABLE=1) ─────────
-                # attach BEFORE stage_dataset so task/rubric/ + verifier/
-                # rubric_report.json reach the publish dir; the converter
-                # rmtree's task/ each run, so attach must re-run every time.
+                # ── Rubric process-scoring, milo-bundle format ───────────────
+                # (opt-in: RUBRIC_ENABLE=1) harbor package → flat uuid bundle →
+                # LLM authoring (once per task) → assay judge → assay score.
+                # RUBRIC_BUNDLE_DEST must live under the repo: the emitted
+                # tests/test_output.py self-locates the vendored assay package
+                # by walking parent directories.
                 if [[ "${RUBRIC_ENABLE:-0}" == "1" ]]; then
-                    local RUBRIC_ASSETS="${RUBRIC_ASSETS_ROOT:-${SCRIPT_DIR}/rubric_assets}"
                     local RUBRIC_CFG="${RUBRIC_LLM_CONFIG:-${SCRIPT_DIR}/.llm_config/rubric-judge.json}"
+                    local MILO_DEST="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}"
+                    local MILO_BUNDLE="${MILO_DEST}/${DS_UUID}"
+                    local ASSAY_ENV=(
+                        "ASSAY_COUNCIL=${RUBRIC_COUNCIL:-sonnet-5=claude-sonnet-5}"
+                        "ASSAY_PROXY=${RUBRIC_PROXY:-http://127.0.0.1:8765/v1/messages}"
+                    )
                     local rrc=0
-                    uv run multiswebench-rubric attach --harbor-out "$HARBOR_OUT" \
-                        --assets-root "$RUBRIC_ASSETS" >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
+                    uv run multiswebench-rubric export-bundle --harbor-out "$HARBOR_OUT" \
+                        --dest "$MILO_DEST" >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
+                    if [[ $rrc -eq 0 ]] && ! grep -q '"mode": "judged"' \
+                            "${MILO_BUNDLE}/tests/rubrics.json" 2>/dev/null; then
+                        # not yet authored for this task: narrate + draft items
+                        # via the bridge, gated by lint + anchoring + validate
+                        env "${ASSAY_ENV[@]}" uv run multiswebench-rubric author-milo \
+                            --delivery "$MILO_DEST" --task "$DS_UUID" \
+                            --llm-config "$RUBRIC_CFG" >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
+                    fi
                     if [[ $rrc -eq 0 ]]; then
-                        uv run multiswebench-rubric judge --harbor-out "$HARBOR_OUT" \
-                            --assets-root "$RUBRIC_ASSETS" --llm-config "$RUBRIC_CFG" \
-                            --run-base "$RUN_BASE" >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
-                        # judge changes result.json (verifier_result.rubric), so
-                        # re-attach checksums stay consistent: attach only patches
-                        # task_checksum, judge only patches verifier_result.rubric
-                        # — disjoint keys, no second attach needed.
+                        env "${ASSAY_ENV[@]}" uv run python -m assay --delivery "$MILO_DEST" \
+                            judge --task "$DS_UUID" --out "${MILO_DEST}/verdicts" \
+                            >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
+                    fi
+                    if [[ $rrc -eq 0 ]]; then
+                        env "${ASSAY_ENV[@]}" uv run python -m assay --delivery "$MILO_DEST" \
+                            score --task "$DS_UUID" --verdicts "${MILO_DEST}/verdicts" \
+                            --write >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
                     fi
                     if [[ $rrc -ne 0 ]]; then
-                        log "rubric: WARN attach/judge exit $rrc (see ${RUN_BASE}/rubric.log)"
+                        log "rubric: WARN export/author/judge/score exit $rrc (see ${RUN_BASE}/rubric.log)"
                     else
-                        log "rubric: ok (attached + judged)"
+                        log "rubric: ok -> ${MILO_BUNDLE}"
                     fi
                 fi
             fi

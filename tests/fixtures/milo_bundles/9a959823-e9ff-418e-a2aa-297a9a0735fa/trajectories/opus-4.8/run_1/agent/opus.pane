@@ -1,0 +1,200 @@
+                    count += 1
+                else:
+                    query = query.set(db_column, arithmetic.get(db_column))
+
+        query = query.where(table[self.model._meta.db_pk_column] == self.parameter(count))
+
+        sql = self.update_cache[key] = query.get_sql()
+        return sql
+# file_editor: /workspace/tortoise-orm/tortoise/backends/base/executor.py
+The file /workspace/tortoise-orm/tortoise/backends/base/executor.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/tortoise-orm/tortoise/backends/base/executor.py:
+   242	        Generates the SQL for updating a model depending on provided update_fields.
+   243	        Result is cached for performance.
+   244	        """
+   245	        arithmetic = arithmetic or {}
+   246	        key = ",".join(update_fields) if update_fields else ""
+   247	        # SQL for arithmetic (``F``) expressions is baked directly into the query and is
+   248	        # unique per expression, so it must not be served from (or stored in) the cache
+   249	        # which is keyed only by field names.
+   250	        if not arithmetic and key in self.update_cache:
+   251	            return self.update_cache[key]
+   252	        table = self.model._meta.basetable
+   253	        query = self.db.query_class.update(table)
+   254	        count = 0
+   255	        for field in update_fields or self.model._meta.fields_db_projection.keys():
+   256	            db_column = self.model._meta.fields_db_projection[field]
+   257	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+# file_editor: /workspace/tortoise-orm/tortoise/backends/base/executor.py
+The file /workspace/tortoise-orm/tortoise/backends/base/executor.py has been edited. Here's the result of running `cat -n` on a snippet of /workspace/tortoise-orm/tortoise/backends/base/executor.py:
+   262	                else:
+   263	                    query = query.set(db_column, arithmetic.get(db_column))
+   264	
+   265	        query = query.where(table[self.model._meta.db_pk_column] == self.parameter(count))
+   266	
+   267	        sql = query.get_sql()
+   268	        if not arithmetic:
+   269	            self.update_cache[key] = sql
+   270	        return sql
+   271	
+   272	    async def execute_update(
+   273	        self, instance: "Union[Type[Model], Model]", update_fields: Optional[Iterable[str]]
+   274	    ) -> int:
+   275	
+Review the changes and make sure they are as expected. Edit the file again if necessary.
+$ cd /workspace/tortoise-orm && timeout 30 python _repro3.py 2>&1 | tail -6; echo "exit=${PIPESTATUS[0]}"; rm -f _repro3.py
+normal after F: OK 200
+exit=0
+$ cd /workspace/tortoise-orm && python -m pytest tests/test_model_methods.py tests/test_source_field.py tests/fields/ tests/test_queryset.py -o addopts="" -q 2>&1 | tail -8
+E       - ba''a
+E       ?    -
+E       + ba'a
+
+tests/fields/test_char.py:35: AssertionError
+=========================== short test summary info ============================
+FAILED tests/fields/test_char.py::TestCharFields::test_update - AssertionErro...
+1 failed, 504 passed, 1 skipped in 3.63s
+$ cd /workspace/tortoise-orm && timeout 400 python -m pytest tests/ -o addopts="" -q --ignore=tests/test_default.py --ignore=tests/backends/test_connection_params.py 2>&1 | tail -4
+FAILED tests/contrib/test_pydantic.py::TestPydanticCycle::test_schema - Attri...
+FAILED tests/contrib/test_pydantic.py::TestPydanticCycle::test_serialisation
+FAILED tests/fields/test_char.py::TestCharFields::test_update - AssertionErro...
+19 failed, 876 passed, 45 skipped, 4 xfailed, 3 warnings in 7.40s
+$ cd /workspace/tortoise-orm && git --no-pager diff
+diff --git a/CHANGELOG.rst b/CHANGELOG.rst
+index 97604f3..927b85a 100644
+--- a/CHANGELOG.rst
++++ b/CHANGELOG.rst
+@@ -15,6 +15,7 @@ Changelog
+ - Support `F` expression in `annotate`. (#475)
+ - Fix `QuerySet.select_related` in case of join same table twice. (#525)
+ - Integrate Aerich into the install. (#530)
++- Refresh `F` expression fields with their persisted values after `Model.save()`. (#549)
+
+ 0.16.16
+ -------
+diff --git a/tortoise/__init__.py b/tortoise/__init__.py
+index 42f793b..706215c 100644
+--- a/tortoise/__init__.py
++++ b/tortoise/__init__.py
+@@ -495,10 +495,10 @@ class Tortoise:
+                                 }
+                             },
+                             # Using a DB_URL string
+-                            'default': 'postgres://postgres:qwerty123@localhost:5432/events'
++                            'default': 'postgres://postgres:qwerty123@localhost:5432/test'
+                         },
+                         'apps': {
+-                            'models': {
++                            'my_app': {
+                                 'models': ['__main__'],
+                                 # If no default_connection specified, defaults to 'default'
+                                 'default_connection': 'default',
+diff --git a/tortoise/backends/base/executor.py b/tortoise/backends/base/executor.py
+index a416997..caf17b1 100644
+--- a/tortoise/backends/base/executor.py
++++ b/tortoise/backends/base/executor.py
+@@ -242,10 +242,13 @@ class BaseExecutor:
+         Generates the SQL for updating a model depending on provided update_fields.
+         Result is cached for performance.
+         """
++        arithmetic = arithmetic or {}
+         key = ",".join(update_fields) if update_fields else ""
+-        if key in self.update_cache:
++        # SQL for arithmetic (``F``) expressions is baked directly into the query and is
++        # unique per expression, so it must not be served from (or stored in) the cache
++        # which is keyed only by field names.
++        if not arithmetic and key in self.update_cache:
+             return self.update_cache[key]
+-        arithmetic = arithmetic or {}
+         table = self.model._meta.basetable
+         query = self.db.query_class.update(table)
+         count = 0
+@@ -261,7 +264,9 @@ class BaseExecutor:
+
+         query = query.where(table[self.model._meta.db_pk_column] == self.parameter(count))
+
+-        sql = self.update_cache[key] = query.get_sql()
++        sql = query.get_sql()
++        if not arithmetic:
++            self.update_cache[key] = sql
+         return sql
+
+     async def execute_update(
+diff --git a/tortoise/models.py b/tortoise/models.py
+index 3693e72..87e376b 100644
+--- a/tortoise/models.py
++++ b/tortoise/models.py
+@@ -886,6 +886,7 @@ class Model(metaclass=ModelMeta):
+             if rows == 0:
+                 raise IntegrityError(f"Can't update object that doesn't exist. PK: {self.pk}")
+             created = False
++            await self._refresh_f_expression_fields(db, update_fields)
+         else:
+             if self._saved_in_db or update_fields:
+                 if self.pk is None:
+@@ -894,6 +895,7 @@ class Model(metaclass=ModelMeta):
+                 else:
+                     await executor.execute_update(self, update_fields)
+                     created = False
++                    await self._refresh_f_expression_fields(db, update_fields)
+             else:
+                 # TODO: Do a merge/upsert operation here instead. Let the executor determine an optimal strategy for each DB engine.
+                 await executor.execute_insert(self)
+@@ -902,6 +904,28 @@ class Model(metaclass=ModelMeta):
+         self._saved_in_db = True
+         await self._post_save(using_db, created, update_fields)
+
++    async def _refresh_f_expression_fields(
++        self, db: BaseDBAsyncClient, update_fields: Optional[Iterable[str]]
++    ) -> None:
++        """
++        Refreshes the fields on the instance that were set to an F expression (or
++        arithmetic expression built from one) with their actual persisted values.
++
++        Without this, an instance's attribute would keep holding the pypika ``Term``
++        object after saving, instead of the resolved value.
++        """
++        f_fields = [
++            field
++            for field in (update_fields or self._meta.fields_db_projection.keys())
++            if isinstance(getattr(self, field, None), Term)
++        ]
++        if not f_fields:
++            return
++        refreshed = await self.__class__.filter(pk=self.pk).using_db(db).only(*f_fields).first()
++        if refreshed is not None:
++            for field in f_fields:
++                setattr(self, field, getattr(refreshed, field))
++
+     async def delete(self, using_db: Optional[BaseDBAsyncClient] = None) -> None:
+         """
+         Deletes the current model object.
+$ cd /workspace/tortoise-orm && ls _repro* 2>/dev/null; rm -f /tmp/repro*.py /tmp/checkpath.py; python -m pytest tests/test_model_methods.py -k f_expression -o addopts="" -q 2>&1 | tail -4; git status --short
+..                                                                       [100%]
+2 passed, 69 deselected in 0.07s
+ M CHANGELOG.rst
+ M tortoise/__init__.py
+ M tortoise/backends/base/executor.py
+ M tortoise/models.py
+# finish: Summarize implemented fixes for issues
+I analyzed the issue list and implemented the concrete, actionable code/doc changes. Several items (#537 "how to update a JSON field?", #335 "how to set a timezone?", #553 tooling/CI, and the deliberately vague #552 "fix a typo") are usage questions or infrastructure PRs with no reproducible code defect, so the focus was on the real bug (#549) and the docs-clarity fix (#551).
+
+## Issue #2 (#549) — F expression directly on an object causes weird serialization
+Root cause: after doing `obj.field = F("field") + 1; await obj.save(update_fields=[...])`, the instance attribute kept holding the pypika `Term`/`ArithmeticExpression` object instead of the resulting value, so serializing the model produced the expression tree shown in the issue.
+
+Fixes in `tortoise/models.py`:
+- Added `Model._refresh_f_expression_fields(...)`, called after every `execute_update` in `save()`. It detects fields whose current value is a pypika `Term` (i.e. an `F`/arithmetic expression), re-reads them from the DB with `.only(...).first()`, and writes the resolved values back onto the instance. Now `obj.field` holds the real value (e.g. `2`) after save.
+
+Fix in `tortoise/backends/base/executor.py` (`get_update_sql`):
+- The generated UPDATE SQL is cached keyed only by field names, but arithmetic (`F`) expressions are baked directly into the SQL. This meant an F-based save polluted the cache and a subsequent normal save of the same field reused SQL with the wrong number of bind parameters (`sqlite3.ProgrammingError: Incorrect number of bindings supplied`). I made the cache skip reading/writing when arithmetic expressions are present, so each F expression renders fresh SQL and normal updates keep their correct cached SQL.
+
+## Issue #3 (#551) — Make Tortoise.init docs clearer
+In `tortoise/__init__.py` example config, renamed the app key `'models'` → `'my_app'` (avoids confusion with the inner `'models'` list) and changed the example DB_URL database from `events` → `test` for consistency with the dict example above it.
+
+## Other
+- Added a CHANGELOG entry for the #549 fix.
+
+## Verification
+- `tests/test_model_methods.py::TestModelMethods::test_save_f_expression` passes.
+- Wrote a temporary reproduction covering single/multiple F fields, F+full save, mixing F-save then normal-save of the same field, and confirmed all resolve correctly and the binding-count crash is gone (temp files removed afterward).
+- Full test suite (excluding `test_default.py` and `backends/test_connection_params.py`, which fail at collection because `asyncpg` isn't installed in this env) reports the same 19 pre-existing failures / 876 passed both before and after my changes — i.e. no regressions. The remaining failures are unrelated (Pydantic v2 environment mismatch and a char-escaping test).

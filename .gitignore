@@ -256,3 +256,8 @@ harbor_workspace*/
 watch_eval.py
 *.bak.*
 *.bak_*
+
+# Milo-format delivery bundles (generated per run; must sit under the repo so
+# the emitted test_output.py can self-locate the vendored assay package).
+# Root-anchored: tests/fixtures/milo_bundles IS committed.
+/milo_bundles/

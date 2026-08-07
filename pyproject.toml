@@ -15,6 +15,7 @@ dependencies = [
     "openhands-sdk",
     "openhands-tools",
     "unidiff>=0.7.5,<0.8.0",
+    "PyYAML",  # vendored assay/ (truth.py Provenance + legacy site blocks)
     "openhands-agent-server",
     "openhands-workspace",
     "modal>=1.1.4",
@@ -75,7 +76,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["benchmarks"]
+include = ["benchmarks", "assay"]
 
 [tool.setuptools]
 # Install the top-level sitecustomize module so Python auto-loads our Modal logging patch.
