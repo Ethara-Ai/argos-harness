@@ -181,6 +181,36 @@ def test_emitted_test_output_runs(uuid: str):
     assert "max_turns=100" in out, out  # the B4 detail — the pilot's known hard gate
 
 
+def test_rejected_authoring_leaves_no_judged_items(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A failed/rejected authoring run must scrub its drafted R-items:
+    run_eval.sh's once-per-task guard greps rubrics.json for '"mode": "judged"',
+    and a stale marker would send an unauthored bundle straight to judging."""
+    from benchmarks.multiswebench.scripts.rubric import assay_author
+
+    delivery = tmp_path / "delivery"
+    bundle = delivery / "00000000-0000-0000-0000-000000000000"
+    (bundle / "tests").mkdir(parents=True)
+    rubrics = bundle / "tests" / "rubrics.json"
+    skeleton = json.dumps({"items": [{"id": "G1"}]}, indent=2) + "\n"
+    rubrics.write_text(skeleton)
+
+    monkeypatch.setattr(assay_author, "_assay_cli", lambda *a, **k: (0, ""))
+
+    def failing_flow(b: Path, d: Path, cfg: Path, *, log: object) -> bool:
+        rubrics.write_text(
+            json.dumps({"items": [{"id": "R1", "mode": "judged"}, {"id": "G1"}]})
+        )
+        return False
+
+    monkeypatch.setattr(assay_author, "_author_from_skeleton", failing_flow)
+    assert not assay_author.author_bundle(
+        bundle, delivery, tmp_path / "judge.json", log=lambda _m: None
+    )
+    assert rubrics.read_text() == skeleton  # judged marker scrubbed
+
+
 @pytest.mark.parametrize("uuid", [U538, U943], ids=["538", "943"])
 def test_rescoring_fixtures_is_deterministic(uuid: str, tmp_path: Path):
     """Same scorer + same verdicts must regenerate the committed artifacts."""

@@ -137,3 +137,18 @@ class TestDriftPatches:
         src = (REPO_ROOT / "pyproject.toml").read_text()
         assert '"benchmarks", "assay"' in src
         assert "PyYAML" in src
+
+    def test_judge_requests_never_send_temperature(self):
+        # Claude 5 models reject the temperature parameter outright; the plan
+        # pins that no judge request shape carries it.
+        from assay.judge import build_request
+
+        for proxy in (
+            "http://127.0.0.1:8765/v1/messages",  # anthropic/bridge shape
+            "http://127.0.0.1:9999/v1/chat/completions",  # openai shape
+        ):
+            for cached in ("", "evidence packet"):
+                body, _headers = build_request(
+                    proxy, "claude-sonnet-5", "system prompt", "question", cached
+                )
+                assert "temperature" not in body, proxy
