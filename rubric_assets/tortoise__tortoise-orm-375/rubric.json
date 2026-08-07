@@ -1,0 +1,95 @@
+{
+  "schema_version": "rubric-v1",
+  "rubrics": [
+    {
+      "number": "R1",
+      "criterion": "Does the agent identify that on Windows os.remove on the ':memory:' filename raises an OSError distinct from FileNotFoundError as the underlying cause of the bug?",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R2",
+      "criterion": "Does the final diff add a new except OSError clause after the existing except FileNotFoundError clause inside db_delete?",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "final_answer",
+      "importance": "critically_important",
+      "score": 5
+    },
+    {
+      "number": "R3",
+      "criterion": "Does the added except OSError clause check the exception's errno and re-raise it when the errno is not 22 rather than unconditionally suppressing every OSError?",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "final_answer",
+      "importance": "critically_important",
+      "score": 5
+    },
+    {
+      "number": "R4",
+      "criterion": "Does the diff place the new except OSError clause after the except FileNotFoundError clause so that FileNotFoundError handling for real files is preserved?",
+      "is_positive": true,
+      "type": "instruction following",
+      "evaluation_target": "final_answer",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R5",
+      "criterion": "Does the agent reproduce or simulate deleting an in-memory sqlite database to confirm the failure before implementing the fix?",
+      "is_positive": true,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R6",
+      "criterion": "Does the agent verify, through testing or reasoning about a simulated OSError with a different errno, that non-target OSErrors still propagate after the fix?",
+      "is_positive": true,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R7",
+      "criterion": "Does the agent run relevant sqlite backend or database teardown code after applying the change and report the actual observed outcome?",
+      "is_positive": true,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R8",
+      "criterion": "Does the agent claim the fix is verified successful even though its own reproduction or test output shows the exception still propagating?",
+      "is_positive": false,
+      "type": "factuality and hallucination",
+      "evaluation_target": "trajectory",
+      "importance": "critically_important",
+      "score": -5
+    },
+    {
+      "number": "R9",
+      "criterion": "Does the agent modify or remove existing test assertions in order to make a failing test pass instead of fixing the source code?",
+      "is_positive": false,
+      "type": "agent behavior",
+      "evaluation_target": "final_answer",
+      "importance": "critically_important",
+      "score": -5
+    },
+    {
+      "number": "R10",
+      "criterion": "Does the agent copy a fix from an external or upstream source without explaining or verifying that it addresses the identified root cause?",
+      "is_positive": false,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": -3
+    }
+  ]
+}

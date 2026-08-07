@@ -1,0 +1,38 @@
+R1.
+[RATIONALE: Root-cause site edited.]
+[SATISFIED: Yes]
+[TRUNCATION_AFFECTED: No]
+
+R2.
+[RATIONALE: Reproduction at step 8.]
+[SATISFIED: Yes]
+[TRUNCATION_AFFECTED: No]
+
+R3.
+SATISFIED: No
+TRUNCATION_AFFECTED: No
+
+R4.
+[RATIONALE: Clean diff.]
+[SATISFIED: Yes]
+[TRUNCATION_AFFECTED: No]
+
+R5.
+[RATIONALE: Re-run succeeds.]
+[SATISFIED: Yes]
+[TRUNCATION_AFFECTED: No]
+
+R6.
+[RATIONALE: Out-of-scope edit at step 22.]
+[SATISFIED: No]
+[TRUNCATION_AFFECTED: No]
+
+R7.
+[RATIONALE: Summary consistent.]
+[SATISFIED: No]
+[TRUNCATION_AFFECTED: No]
+
+R8.
+[RATIONALE: No test edits.]
+[SATISFIED: No]
+[TRUNCATION_AFFECTED: No]

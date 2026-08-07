@@ -1,0 +1,107 @@
+{
+  "ok": true,
+  "per_criterion": [
+    {
+      "number": "R1",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R2",
+      "anchorable": true,
+      "verdict": "keep",
+      "reason": "validated (gold-pass ∧ stub-fail)",
+      "gold": {
+        "satisfied": true,
+        "passed": true,
+        "abstained": false
+      },
+      "stub": {
+        "satisfied": false,
+        "passed": false,
+        "abstained": false
+      }
+    },
+    {
+      "number": "R3",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R4",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R5",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R6",
+      "anchorable": true,
+      "verdict": "keep",
+      "reason": "validated (gold-pass ∧ stub-fail)",
+      "gold": {
+        "satisfied": true,
+        "passed": true,
+        "abstained": false
+      },
+      "stub": {
+        "satisfied": false,
+        "passed": false,
+        "abstained": false
+      }
+    },
+    {
+      "number": "R7",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R8",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R9",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R10",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R11",
+      "anchorable": true,
+      "verdict": "drop",
+      "reason": "stub PASSES it (asserts nothing)",
+      "gold": {
+        "satisfied": true,
+        "passed": true,
+        "abstained": false
+      },
+      "stub": {
+        "satisfied": true,
+        "passed": true,
+        "abstained": false
+      }
+    },
+    {
+      "number": "R12",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    }
+  ],
+  "drops": [
+    "R11"
+  ],
+  "flags": [],
+  "errors": [],
+  "rounds": 2,
+  "pruned": [
+    "R11"
+  ]
+}

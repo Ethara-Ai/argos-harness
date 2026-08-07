@@ -1,0 +1,41 @@
+R1.
+[[RATIONALE: Root-cause site edited.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]
+
+R2.
+[[RATIONALE: On first reading the reproduction happened.]]
+[[SATISFIED: Yes]]
+Wait, on closer inspection the command at step 8 targeted a different module.
+[[SATISFIED: No]]
+[[TRUNCATION_AFFECTED: No]]
+
+R3.
+[[RATIONALE: No prior read.]]
+[[SATISFIED: No]]
+[[TRUNCATION_AFFECTED: No]]
+
+R4.
+[[RATIONALE: Clean diff.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]
+
+R5.
+[[RATIONALE: Re-run observed.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]
+
+R6.
+[[RATIONALE: Edits stay in scope.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]
+
+R7.
+[[RATIONALE: Summary consistent with output.]]
+[[SATISFIED: No]]
+[[TRUNCATION_AFFECTED: No]]
+
+R8.
+[[RATIONALE: No test edits.]]
+[[SATISFIED: No]]
+[[TRUNCATION_AFFECTED: No]]

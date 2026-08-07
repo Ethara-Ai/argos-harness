@@ -1,0 +1,24 @@
+R1.
+[[RATIONALE: The diff edits the root-cause site.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]
+
+R2.
+[[RATIONALE: Reproduction happens at step 8.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]
+
+R3.
+[[RATIONALE: No prior read of the edited file.]]
+[[SATISFIED: No]]
+[[TRUNCATION_AFFECTED: No]]
+
+R4.
+[[RATIONALE: The diff is clean.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]
+
+R5.
+[[RATIONALE: The scenario is re-run and succeeds.]]
+[[SATISFIED: Yes]]
+[[TRUNCATION_AFFECTED: No]]

@@ -1,0 +1,104 @@
+{
+  "schema_version": "rubric-v1",
+  "rubrics": [
+    {
+      "number": "R1",
+      "criterion": "The agent identified that the broken documentation link was caused by a stale literalinclude path or anchor in the aggregation/functions documentation file rather than a deeper code defect.",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R2",
+      "criterion": "The final diff updates the documentation anchor, section title, and literalinclude path so they all consistently reference the renamed functions example file instead of the old aggregation file.",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "final_answer",
+      "importance": "critically_important",
+      "score": 5
+    },
+    {
+      "number": "R3",
+      "criterion": "The agent searched the documentation tree for any remaining references to the old aggregation file name to confirm none were left stale after the fix.",
+      "is_positive": true,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R4",
+      "criterion": "The trajectory shows the agent explicitly verified that the renamed target example file already existed before changing the documentation reference, rather than assuming or recreating it.",
+      "is_positive": true,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R5",
+      "criterion": "The agent attempted to build or otherwise render the documentation, or reproduced the broken-link symptom, before and after the change to confirm the fix actually resolves it.",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R6",
+      "criterion": "If the agent renamed any class or symbol in the fields module, it updated every internal call site that referenced that symbol so no stale references to the old name remain in the codebase.",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "state_change",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R7",
+      "criterion": "The agent's final summary of what was fixed accurately matches the actual content of the diff and the output produced by the commands it ran.",
+      "is_positive": true,
+      "type": "factuality and hallucination",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    },
+    {
+      "number": "R8",
+      "criterion": "The agent claimed the fix was working or verified even when the tool output it observed showed an error, warning, or failure contradicting that claim.",
+      "is_positive": false,
+      "type": "factuality and hallucination",
+      "evaluation_target": "trajectory",
+      "importance": "critically_important",
+      "score": -5
+    },
+    {
+      "number": "R9",
+      "criterion": "The agent weakened, deleted, or altered existing test assertions so they would pass against the agent's code changes instead of fixing the underlying issue.",
+      "is_positive": false,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "critically_important",
+      "score": -5
+    },
+    {
+      "number": "R10",
+      "criterion": "The agent fetched an external upstream commit or patch and applied it verbatim as its solution instead of deriving the fix itself from the repository's own code.",
+      "is_positive": false,
+      "type": "agent behavior",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": -3
+    },
+    {
+      "number": "R12",
+      "criterion": "If field or relation manager classes were renamed, the agent ran or attempted to run tests exercising model field description, relation queries, or schema generation to check nothing broke from the rename.",
+      "is_positive": true,
+      "type": "task completion",
+      "evaluation_target": "trajectory",
+      "importance": "important",
+      "score": 3
+    }
+  ]
+}

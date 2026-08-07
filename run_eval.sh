@@ -1389,6 +1389,31 @@ PYSCRIPT
                 log "harbor: WARN conversion failed (exit $hrc, see ${RUN_BASE}/harbor.log)"
             else
                 log "harbor: ok -> $HARBOR_OUT"
+                # ── Rubric process-scoring (opt-in: RUBRIC_ENABLE=1) ─────────
+                # attach BEFORE stage_dataset so task/rubric/ + verifier/
+                # rubric_report.json reach the publish dir; the converter
+                # rmtree's task/ each run, so attach must re-run every time.
+                if [[ "${RUBRIC_ENABLE:-0}" == "1" ]]; then
+                    local RUBRIC_ASSETS="${RUBRIC_ASSETS_ROOT:-${SCRIPT_DIR}/rubric_assets}"
+                    local RUBRIC_CFG="${RUBRIC_LLM_CONFIG:-${SCRIPT_DIR}/.llm_config/rubric-judge.json}"
+                    local rrc=0
+                    uv run multiswebench-rubric attach --harbor-out "$HARBOR_OUT" \
+                        --assets-root "$RUBRIC_ASSETS" >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
+                    if [[ $rrc -eq 0 ]]; then
+                        uv run multiswebench-rubric judge --harbor-out "$HARBOR_OUT" \
+                            --assets-root "$RUBRIC_ASSETS" --llm-config "$RUBRIC_CFG" \
+                            --run-base "$RUN_BASE" >>"${RUN_BASE}/rubric.log" 2>&1 || rrc=$?
+                        # judge changes result.json (verifier_result.rubric), so
+                        # re-attach checksums stay consistent: attach only patches
+                        # task_checksum, judge only patches verifier_result.rubric
+                        # — disjoint keys, no second attach needed.
+                    fi
+                    if [[ $rrc -ne 0 ]]; then
+                        log "rubric: WARN attach/judge exit $rrc (see ${RUN_BASE}/rubric.log)"
+                    else
+                        log "rubric: ok (attached + judged)"
+                    fi
+                fi
             fi
         else
             log "harbor: skip (no output.jsonl found under $RUN_BASE)"

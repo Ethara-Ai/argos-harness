@@ -1,0 +1,83 @@
+{
+  "ok": true,
+  "per_criterion": [
+    {
+      "number": "R1",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R2",
+      "anchorable": true,
+      "verdict": "drop",
+      "reason": "gold FAILS it (unsound/too strict)",
+      "gold": {
+        "satisfied": false,
+        "passed": false,
+        "abstained": false
+      },
+      "stub": {
+        "satisfied": false,
+        "passed": false,
+        "abstained": false
+      }
+    },
+    {
+      "number": "R3",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R4",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R5",
+      "anchorable": true,
+      "verdict": "drop",
+      "reason": "gold FAILS it (unsound/too strict)",
+      "gold": {
+        "satisfied": false,
+        "passed": false,
+        "abstained": false
+      },
+      "stub": {
+        "satisfied": false,
+        "passed": false,
+        "abstained": false
+      }
+    },
+    {
+      "number": "R6",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R7",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R8",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    },
+    {
+      "number": "R9",
+      "anchorable": false,
+      "verdict": "not_anchorable"
+    }
+  ],
+  "drops": [
+    "R2",
+    "R5"
+  ],
+  "flags": [],
+  "errors": [],
+  "rounds": 2,
+  "pruned": [
+    "R2",
+    "R5"
+  ]
+}

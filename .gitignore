@@ -214,6 +214,7 @@ workspace/
 .llm_config/*
 !.llm_config/example.json
 !.llm_config/claude-code.json
+!.llm_config/rubric-judge.json
 
 # Evaluation outputs
 eval_outputs/
