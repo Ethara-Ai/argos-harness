@@ -300,12 +300,16 @@ OUTPUT_BASE="$(cd "$OUTPUT_BASE" && pwd)"
 # Multi-instance dataset files are split into per-instance files up front:
 # everything downstream (tag, agent-image pre-build, harbor, publish) is
 # keyed on one record per file. Single-record files pass through untouched.
+# --backfill-interval fills an empty number_interval from the harness registry
+# (team files ship it blank; evaluation cannot resolve the instance class
+# without it) — needs the uv env, which the refresh step above just synced.
 SPLIT_BASE="${OUTPUT_BASE}/_split"
 EXPANDED_DATASETS=()
 for ds in "${DATASETS[@]}"; do
     [[ ! -f "$ds" ]] && { echo "ERROR: dataset not found: $ds"; exit 1; }
-    split_out="$(python3 "${SCRIPT_DIR}/benchmarks/multiswebench/scripts/data/split_dataset.py" \
-        "$ds" --out-base "$SPLIT_BASE")" || {
+    split_out="$(cd "$SCRIPT_DIR" && uv run python \
+        "${SCRIPT_DIR}/benchmarks/multiswebench/scripts/data/split_dataset.py" \
+        "$ds" --out-base "$SPLIT_BASE" --backfill-interval)" || {
         echo "ERROR: invalid dataset file: $ds (see message above)"; exit 1; }
     while IFS= read -r part; do
         [[ -z "$part" ]] && continue

@@ -122,7 +122,10 @@ openhands-workspace = { workspace = true }
 openhands-agent-server = { workspace = true }
 swt-bench = { git = "https://github.com/logic-star-ai/swt-bench.git", rev = "5fdcd446ff05e248ecfffc19d560a210699f71f8" }
 commit0 = { git = "https://github.com/Ethara-Ai/commit0.git", rev = "1bd6bf353f736278b10b6ec97c1b27afa2ff6c75" }
-multi-swe-bench = { git = "https://github.com/Ethara-Ai/multi-swe-bench.git",  rev = "main" }
+# Pinned to the last known-good SHA: latest main (13f0929) re-keys the tortoise
+# instance registry to interval names and breaks evaluation lookup
+# ("Instance 'tortoise/tortoise-orm' is not registered").
+multi-swe-bench = { git = "https://github.com/Ethara-Ai/multi-swe-bench.git",  rev = "83e18683062efc1a3ba5693e5c6588c57ac5f095" }
 litellm = { git = "https://github.com/Ethara-Ai/litellm.git", rev = "a276b06a358b4670feda1ccfbe818cfc6be9da0c" }
 
 [tool.uv]

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -69,7 +70,15 @@ def _judge_leg(
     )
     system = prompts.render_judge_system(items, truth_md)
     user = prompts.render_judge_user(packet["text"], len(items))
+    # transient bridge faults (empty completion, hiccups) killed 2 of the
+    # first 5 live authoring runs; one bad response must not void a whole
+    # authoring pass, so retry the leg before failing the gate
     result = transport.call(system, user)
+    for backoff_s in (3, 9):
+        if result.ok:
+            break
+        time.sleep(backoff_s)
+        result = transport.call(system, user)
     if not result.ok:
         return {}, f"anchor_judge_failed[{result.error_kind}]: {result.error}"
     numbers = [str(i.get("number")) for i in items]
