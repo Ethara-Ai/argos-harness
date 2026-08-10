@@ -116,6 +116,104 @@ After setting up the environment and configuring your LLM, see the individual be
 - **[GAIA](benchmarks/gaia/)**: General AI assistant tasks requiring multi-step reasoning
 - **[OpenAgentSafety](benchmarks/openagentsafety/)**: AI agent safety evaluation in workplace scenarios with NPC interactions
 
+## Running the Multi-SWE-bench milo pipeline (`run_eval.sh`)
+
+The end-to-end delivery pipeline: dataset file → trajectory (Docker agent) →
+evaluation → harbor conversion → rubric-scored milo bundle. See `RUBRIC.md`
+for the rubric/scoring internals.
+
+### One-time machine setup
+
+```bash
+# 1. uv (skip if `uv --version` works)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Docker Desktop must be running (trajectories execute in containers)
+
+# 3. Build: submodules + python deps + pre-commit hooks
+make build
+
+# 4. AWS credentials for ECR image pulls (one time; needed by `aws ecr get-login-password`).
+#    CAUTION — the .env variable names are misleading:
+#      AWS_SECRET_KEY        actually holds the ACCESS KEY ID (AKIA...)
+#      AWS_ACCESS_SECRET_KEY actually holds the SECRET ACCESS KEY
+set -a; source .env; set +a
+aws configure set aws_access_key_id     "$AWS_SECRET_KEY"
+aws configure set aws_secret_access_key "$AWS_ACCESS_SECRET_KEY"
+aws configure set region ap-south-1
+```
+
+`.env` (repo root, never committed) must also carry `GITHUB_TOKEN` for the
+publish preflight.
+
+### Before every run: the OAuth bridge
+
+The bridge (port 8765) fronts the Anthropic API with your Claude-subscription
+OAuth token, so runs bill to the subscription instead of an API key:
+
+```bash
+proxy/claude_code_bridge.sh status   # check
+proxy/claude_code_bridge.sh start    # start if not running
+```
+
+**Caveat:** the bridge locks onto whichever Claude account is logged in when
+it starts and never re-reads the keychain. After switching accounts with
+`claude /login`, always `stop` + `start` the bridge.
+
+### The run
+
+```bash
+# Python example (tortoise-orm):
+EGRESS_FILTER_DISABLE=1 RUBRIC_ENABLE=1 bash run_eval.sh \
+  --llm-config .llm_config/claude-code.json \
+  --dataset path/to/tortoise__tortoise-orm_dataset.jsonl \
+  --ecr-prefix <account>.dkr.ecr.<region>.amazonaws.com/<repo-prefix> \
+  --lang python --no-push --data-dir ../milo-bench-dataset
+
+# Go example (dapr): same command with --lang go and the dapr dataset file.
+```
+
+| Flag / env | Purpose |
+|---|---|
+| `EGRESS_FILTER_DISABLE=1` | Required on macOS: the container egress filter hard-fails under Docker Desktop |
+| `RUBRIC_ENABLE=1` | Turn on the milo bundle chain (export → author → judge → score) |
+| `--llm-config` | Trajectory model config (see model table below) |
+| `--dataset` | The team's dataset file — multi-instance files are split automatically, missing `number_interval` is backfilled from the registry |
+| `--ecr-prefix` | Registry holding the pre-built task images (login happens inside the script) |
+| `--lang` | Task repo language (`python`, `go`, ...); else auto-detected per file |
+| `--no-push --data-dir DIR` | Stage bundles into a local clone instead of pushing to the dataset repo |
+| `--parallel N` | Instances run concurrently (default 1; 2–3 max on a laptop — each instance can spawn ~5 containers, and parallelism burns the subscription cap N× faster) |
+| `-k N` | Runs per instance (pass@k; default 1) |
+
+Monitor from a second terminal:
+
+```bash
+tail -f eval_outputs/_parallel_logs/*.log
+```
+
+If `rate_limit_error` lines appear, the Claude subscription cap is hit — stop
+the run (Ctrl-C) and resume after the window resets; capped instances produce
+empty trajectories, not partial ones.
+
+### Which model does what
+
+| Role | Where configured | Default |
+|---|---|---|
+| Trajectory agent | `.llm_config/claude-code.json` → `model` | `anthropic/claude-opus-4-8` |
+| Rubric author (writes TRUTH.md narration + R-items) | `.llm_config/rubric-judge.json` → `author_model` (bare bridge id) | `claude-opus-5` |
+| Judge + anchoring gate | `.llm_config/rubric-judge.json` → `judge_model` (litellm id; council name derived from it) | `anthropic/claude-sonnet-5` |
+
+Note the `base_url` split: `claude-code.json` uses `host.docker.internal:8765`
+(bridge as seen from inside a container; on plain-Linux hosts edit this to
+`172.17.0.1:8765`), while `rubric-judge.json` uses `127.0.0.1:8765` (authoring
+and judging run host-side).
+
+### Outputs
+
+- `eval_outputs/` — per-instance working dirs (trajectory, eval, harbor, logs). Regenerable; safe to delete between runs.
+- `milo_bundles/<uuid>/` — the deliverable milo bundles (trajectory + verifier + rubric).
+- `<data-dir>/dataset/<uuid>/`, `<data-dir>/trajectory/<uuid>/` — staging for the dataset repo push.
+
 ## Rich Logging
 
 Enable enhanced console output with color-coded, structured logs:

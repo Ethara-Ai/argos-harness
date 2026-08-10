@@ -1,6 +1,7 @@
 """LLM authoring driver for milo-format bundles (the piece assay shipped
-without): sonnet via the OAuth bridge writes the TRUTH.md narration and the
-task-specific R-items, gated by assay's own validators.
+without): the author model (config "author_model", default sonnet-5) via the
+OAuth bridge writes the TRUTH.md narration and the task-specific R-items,
+gated by assay's own validators.
 
 Per exported bundle (flat milo layout):
 
@@ -43,8 +44,30 @@ _ITEM_DIMENSIONS = ("issue_coverage", "verification", "adherence", "maintainabil
 _ITEM_TARGETS = ("final_diff", "trajectory", "verification_output")
 
 
+def _resolve_author_model(llm_config: Path) -> str:
+    """Authoring model from the judge config's "author_model" field.
+
+    Bare bridge id expected ("claude-opus-5"); a stray litellm "anthropic/"
+    prefix is stripped defensively. Any problem (missing file, bad JSON,
+    absent field) falls back to AUTHOR_MODEL — same behavior as before the
+    field existed, so authoring never breaks on config drift."""
+    try:
+        raw = json.loads(Path(llm_config).read_text(encoding="utf-8-sig"))
+        model = str(raw.get("author_model") or "").strip()
+    except (OSError, ValueError):
+        return AUTHOR_MODEL
+    if not model:
+        return AUTHOR_MODEL
+    return model.removeprefix("anthropic/")
+
+
 def _bridge_call(
-    system: str, user: str, *, deadline_s: float = 420.0, max_tokens: int = 12_000
+    system: str,
+    user: str,
+    *,
+    model: str = AUTHOR_MODEL,
+    deadline_s: float = 420.0,
+    max_tokens: int = 12_000,
 ) -> str:
     """One authoring call via assay's proven bridge transport. Raises on failure.
 
@@ -58,7 +81,7 @@ def _bridge_call(
     last_err = "no attempt"
     while time.monotonic() < deadline:
         text, err, retry_after, status = assay_judge.call(
-            proxy, AUTHOR_MODEL, system, user, "", max_tokens
+            proxy, model, system, user, "", max_tokens
         )
         if text.strip():
             return text
@@ -127,7 +150,11 @@ def _narration_input(bundle: Path):
 
 
 def narrate_bundle(
-    bundle: Path, *, retries: int = 4, log: Callable[[str], None] = print
+    bundle: Path,
+    *,
+    retries: int = 4,
+    log: Callable[[str], None] = print,
+    author_model: str = AUTHOR_MODEL,
 ) -> bool:
     """Draft + validate + install the four narrative TRUTH.md sections."""
     from assay import narrate
@@ -165,7 +192,9 @@ def narrate_bundle(
                 f"fix every one:\n{feedback}"
             )
         )
-        draft = narrate.strip_code_fences(_bridge_call(narrate.SYSTEM, user))
+        draft = narrate.strip_code_fences(
+            _bridge_call(narrate.SYSTEM, user, model=author_model)
+        )
         problems = narrate.validate_narration(
             draft, added_lines=added_lines, fix_patch=fix_patch, spec_text=spec_text
         )
@@ -283,6 +312,7 @@ def draft_items_bundle(
     retries: int = 2,
     feedback: str = "",
     log: Callable[[str], None] = print,
+    author_model: str = AUTHOR_MODEL,
 ) -> bool:
     original = (bundle / "tests" / "rubrics.json").read_bytes()
     user = _items_user(bundle)
@@ -295,7 +325,7 @@ def draft_items_bundle(
                 f"every finding:\n{feedback}"
             )
         )
-        raw = _bridge_call(_ITEMS_SYSTEM, prompt)
+        raw = _bridge_call(_ITEMS_SYSTEM, prompt, model=author_model)
         obj = _extract_json(raw)
         items = (obj or {}).get("items")
         if not isinstance(items, list) or not (5 <= len(items) <= 9):
@@ -481,9 +511,11 @@ def _author_from_skeleton(
     log: Callable[[str], None],
 ) -> bool:
     uuid = bundle.name
-    if not narrate_bundle(bundle, log=log):
+    author_model = _resolve_author_model(llm_config)
+    log(f"author[{uuid}]: author_model={author_model}")
+    if not narrate_bundle(bundle, log=log, author_model=author_model):
         return False
-    if not draft_items_bundle(bundle, log=log):
+    if not draft_items_bundle(bundle, log=log, author_model=author_model):
         return False
     # kaiju gate loop: anchor -> redraft once WITH the drop reasons -> re-anchor
     # -> prune what still fails. Reject only if anchoring errors or pruning
@@ -494,7 +526,10 @@ def _author_from_skeleton(
     if report["drops"]:
         log(f"author[{uuid}]: redrafting items with anchoring feedback")
         if not draft_items_bundle(
-            bundle, feedback=_drop_feedback(report, bundle), log=log
+            bundle,
+            feedback=_drop_feedback(report, bundle),
+            log=log,
+            author_model=author_model,
         ):
             return False
         report = _anchor_gate(bundle, llm_config, log=log)

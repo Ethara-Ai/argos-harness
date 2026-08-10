@@ -35,16 +35,24 @@ class JudgeConfig:
 
 def load_judge_config(path: str | Path) -> JudgeConfig:
     """Load a judge config JSON, ignoring unknown keys (mirrors the SDK LLM
-    model's extra="ignore" so the same file style works everywhere)."""
+    model's extra="ignore" so the same file style works everywhere).
+
+    The transport model comes from "judge_model" when present, falling back to
+    the legacy "model" key so older config files keep working unchanged."""
     raw = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     if not isinstance(raw, dict):
         raise ValueError(f"judge config {path} must be a JSON object")
-    for required in ("model", "base_url", "api_key"):
+    judge_model = str(raw.get("judge_model") or raw.get("model") or "").strip()
+    if not judge_model:
+        raise ValueError(
+            f"judge config {path} missing required field 'judge_model' (or legacy 'model')"
+        )
+    for required in ("base_url", "api_key"):
         if not str(raw.get(required) or "").strip():
             raise ValueError(f"judge config {path} missing required field {required!r}")
     raw_temperature = raw.get("temperature")
     return JudgeConfig(
-        model=str(raw["model"]),
+        model=judge_model,
         base_url=str(raw["base_url"]).rstrip("/"),
         api_key=str(raw["api_key"]),
         temperature=None if raw_temperature is None else float(raw_temperature),

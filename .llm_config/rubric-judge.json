@@ -1,8 +1,10 @@
 {
   "_auth_mode": "claude-oauth-subscription via proxy/claude_code_bridge (judge runs HOST-side, hence loopback base_url, NOT host.docker.internal)",
   "_temperature_note": "no temperature field on purpose: Claude 5 models reject the parameter ('deprecated for this model')",
+  "_model_note": "author_model: bare bridge id, WRITES the rubrics (TRUTH.md narration + R-item drafting). judge_model: litellm id, GRADES runs (anchoring gate + judge council); the council name is derived from it (anthropic/claude-sonnet-5 -> sonnet-5=claude-sonnet-5).",
   "usage_id": "rubric-judge",
-  "model": "anthropic/claude-sonnet-5",
+  "author_model": "claude-opus-5",
+  "judge_model": "anthropic/claude-sonnet-5",
   "base_url": "http://127.0.0.1:8765",
   "api_key": "sk-ant-oauth-bridge-stub",
   "timeout": 600,

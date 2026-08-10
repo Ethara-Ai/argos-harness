@@ -51,6 +51,22 @@ class TestRunEvalWiring:
         assert '--verdicts "${MILO_DEST}/verdicts"' in score_call
         assert "--write" in score_call
 
+    def test_council_is_derived_from_judge_config(self, run_eval_src: str):
+        """The council default comes from the config's judge_model, computed
+        BEFORE ASSAY_ENV so judge-time and score-time share one value; the
+        env override and the hard sonnet-5 fallback both survive."""
+        derive = run_eval_src.index('d.get("judge_model")')
+        env_block = run_eval_src.index(
+            "ASSAY_COUNCIL=${RUBRIC_COUNCIL:-$COUNCIL_DEFAULT}"
+        )
+        assert derive < env_block
+        # fail-safe: a malformed derivation collapses to today's default
+        assert "COUNCIL_DEFAULT='sonnet-5=claude-sonnet-5'" in run_eval_src
+        # bare python3 on purpose: `uv run` pollutes stdout via sitecustomize,
+        # which would corrupt the captured council string
+        derive_cmd_start = run_eval_src.rindex("python3 -c", 0, derive)
+        assert "uv run" not in run_eval_src[derive_cmd_start:derive]
+
     def test_wcb_delivery_path_is_retired(self, run_eval_src: str):
         assert "multiswebench-rubric attach" not in run_eval_src
         assert "multiswebench-rubric judge" not in run_eval_src
@@ -83,4 +99,7 @@ class TestEntryPoint:
         )
         assert cfg["base_url"] == "http://127.0.0.1:8765"  # host-side loopback
         assert "temperature" not in cfg  # Claude 5 rejects the parameter
-        assert cfg["model"].startswith("anthropic/claude-sonnet")
+        # judge: litellm-prefixed id; author: bare bridge id (no provider prefix)
+        assert cfg["judge_model"].startswith("anthropic/claude-sonnet")
+        assert cfg["author_model"] == "claude-opus-5"
+        assert "/" not in cfg["author_model"]

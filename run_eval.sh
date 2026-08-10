@@ -1423,8 +1423,29 @@ PYSCRIPT
                     local RUBRIC_CFG="${RUBRIC_LLM_CONFIG:-${SCRIPT_DIR}/.llm_config/rubric-judge.json}"
                     local MILO_DEST="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}"
                     local MILO_BUNDLE="${MILO_DEST}/${DS_UUID}"
+                    # Judge council derived from the config's judge_model so
+                    # judge-time and score-time always agree (a mismatched
+                    # council name makes runs read as silently unjudged).
+                    # Bare python3 on purpose: stdlib-only, and `uv run`
+                    # would pollute stdout via the venv sitecustomize.
+                    # Any config problem falls back to the sonnet-5 default.
+                    local COUNCIL_DEFAULT
+                    COUNCIL_DEFAULT="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    m = str(d.get("judge_model") or d.get("model") or "")
+except Exception:
+    m = ""
+m = m or "anthropic/claude-sonnet-5"
+m = m.split("/", 1)[1] if m.startswith("anthropic/") else m
+name = m[len("claude-"):] if m.startswith("claude-") else m
+print(f"{name}={m}")
+' "$RUBRIC_CFG" 2>/dev/null || true)"
+                    [[ "$COUNCIL_DEFAULT" =~ ^[A-Za-z0-9._-]+=[A-Za-z0-9./_-]+$ ]] \
+                        || COUNCIL_DEFAULT='sonnet-5=claude-sonnet-5'
                     local ASSAY_ENV=(
-                        "ASSAY_COUNCIL=${RUBRIC_COUNCIL:-sonnet-5=claude-sonnet-5}"
+                        "ASSAY_COUNCIL=${RUBRIC_COUNCIL:-$COUNCIL_DEFAULT}"
                         "ASSAY_PROXY=${RUBRIC_PROXY:-http://127.0.0.1:8765/v1/messages}"
                     )
                     local rrc=0
