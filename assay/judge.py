@@ -272,6 +272,17 @@ def is_openai_endpoint(proxy: str) -> bool:
     return "/chat/completions" in (proxy or "")
 
 
+def is_responses_endpoint(proxy: str) -> bool:
+    """The OpenAI Responses backend (via proxy/codex_bridge on :8766).
+
+    Matches both ``/responses`` and ``/v1/responses`` by path suffix, and never
+    the Anthropic bridge (``/v1/messages``) or the chat endpoint."""
+    from urllib.parse import urlparse
+
+    path = urlparse(proxy or "").path.rstrip("/")
+    return path.endswith("/responses") or path == "/responses"
+
+
 def build_request(
     proxy: str,
     model: str,
@@ -281,6 +292,33 @@ def build_request(
     max_tokens: int = MAX_TOKENS,
 ) -> tuple[dict, dict]:
     """The body and headers for whichever API shape the endpoint speaks."""
+    if is_responses_endpoint(proxy):
+        # OpenAI Responses shape, spoken to proxy/codex_bridge (:8766). The bridge
+        # strips Authorization + injects the real ChatGPT token, folds these
+        # instructions into the user message, forces stream:true/store:false and
+        # strips max_output_tokens, then aggregates the SSE back to one JSON doc.
+        text = (
+            f"{cached[:MAX_PACKET]}\n\n{question}" if cached else question[:MAX_PACKET]
+        )
+        body = {
+            "model": model,
+            "instructions": system,
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                }
+            ],
+            "store": False,
+            "stream": False,
+            "max_output_tokens": max_tokens,
+        }
+        stub = os.environ.get("ASSAY_CODEX_STUB_KEY", "sk-codex-oauth-bridge-stub")
+        return body, {
+            "content-type": "application/json",
+            "Authorization": f"Bearer {stub}",
+        }
     if is_openai_endpoint(proxy):
         user = (
             f"{cached[:MAX_PACKET]}\n\n{question}" if cached else question[:MAX_PACKET]
@@ -335,6 +373,15 @@ def extract_text(doc: dict) -> str:
         return "".join(
             (c.get("message") or {}).get("content") or "" for c in doc["choices"]
         )
+    # OpenAI Responses shape: walk output[] message items -> output_text parts.
+    if "output" in doc:
+        parts = []
+        for item in doc.get("output") or []:
+            if isinstance(item, dict) and item.get("type") == "message":
+                for c in item.get("content") or []:
+                    if isinstance(c, dict) and c.get("type") == "output_text":
+                        parts.append(c.get("text", ""))
+        return "".join(parts)
     return "\n".join(c.get("text", "") for c in (doc.get("content") or []))
 
 

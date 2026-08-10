@@ -30,6 +30,7 @@ from typing import Any, Callable
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_PROXY = "http://127.0.0.1:8765/v1/messages"
+CODEX_PROXY = "http://127.0.0.1:8766/responses"
 AUTHOR_MODEL = "claude-sonnet-5"
 
 _ISSUE_RE = re.compile(r"^##\s*Issue\s+\d+\s*\(#\d+\):\s*(.+)$", re.MULTILINE)
@@ -47,8 +48,10 @@ _ITEM_TARGETS = ("final_diff", "trajectory", "verification_output")
 def _resolve_author_model(llm_config: Path) -> str:
     """Authoring model from the judge config's "author_model" field.
 
-    Bare bridge id expected ("claude-opus-5"); a stray litellm "anthropic/"
-    prefix is stripped defensively. Any problem (missing file, bad JSON,
+    Returns the FULL litellm-style id ("anthropic/claude-opus-5" or
+    "openai/gpt-5.6-sol"; a legacy bare "claude-opus-5" is treated as
+    anthropic downstream). The provider prefix is what routes the call to the
+    right bridge in ``_bridge_call``. Any problem (missing file, bad JSON,
     absent field) falls back to AUTHOR_MODEL — same behavior as before the
     field existed, so authoring never breaks on config drift."""
     try:
@@ -56,9 +59,25 @@ def _resolve_author_model(llm_config: Path) -> str:
         model = str(raw.get("author_model") or "").strip()
     except (OSError, ValueError):
         return AUTHOR_MODEL
-    if not model:
-        return AUTHOR_MODEL
-    return model.removeprefix("anthropic/")
+    return model or AUTHOR_MODEL
+
+
+def _route_author_model(model_id: str) -> tuple[str, str]:
+    """Map a (possibly prefixed) author model id to (bare_model, proxy_url).
+
+    ``openai/x`` -> Codex Responses bridge (:8766); ``anthropic/x`` or a bare id
+    -> Anthropic bridge (:8765). ``ASSAY_AUTHOR_PROXY`` overrides the URL for
+    either provider (author routing is independent of the judge's ASSAY_PROXY,
+    since author and judge may target different providers)."""
+    m = (model_id or "").strip()
+    if m.startswith("openai/"):
+        bare, default_proxy = m[len("openai/") :], CODEX_PROXY
+    elif m.startswith("anthropic/"):
+        bare, default_proxy = m[len("anthropic/") :], DEFAULT_PROXY
+    else:
+        bare, default_proxy = m, DEFAULT_PROXY
+    proxy = os.environ.get("ASSAY_AUTHOR_PROXY", "").strip() or default_proxy
+    return bare, proxy
 
 
 def _bridge_call(
@@ -71,17 +90,19 @@ def _bridge_call(
 ) -> str:
     """One authoring call via assay's proven bridge transport. Raises on failure.
 
-    Uses a 12k output budget directly (call_with_backoff's 4k default gets
-    eaten by sonnet's thinking and truncates long narrations mid-section)."""
+    The model id's provider prefix routes the call to the matching bridge (the
+    bare model is what goes on the wire). Uses a 12k output budget directly
+    (call_with_backoff's 4k default gets eaten by thinking and truncates long
+    narrations mid-section)."""
     sys.path.insert(0, str(REPO_ROOT))
     from assay import judge as assay_judge
 
-    proxy = os.environ.get("ASSAY_PROXY", DEFAULT_PROXY)
+    bare_model, proxy = _route_author_model(model)
     deadline = time.monotonic() + deadline_s
     last_err = "no attempt"
     while time.monotonic() < deadline:
         text, err, retry_after, status = assay_judge.call(
-            proxy, model, system, user, "", max_tokens
+            proxy, bare_model, system, user, "", max_tokens
         )
         if text.strip():
             return text

@@ -124,7 +124,7 @@ class TestEntryPoint:
         )
         assert cfg["base_url"] == "http://127.0.0.1:8765"  # host-side loopback
         assert "temperature" not in cfg  # Claude 5 rejects the parameter
-        # judge: litellm-prefixed id; author: bare bridge id (no provider prefix)
+        # both are prefix-routed litellm ids (anthropic/ -> :8765, openai/ -> :8766);
+        # deliveries keep both Claude (fixed measuring stick).
         assert cfg["judge_model"].startswith("anthropic/claude-sonnet")
-        assert cfg["author_model"] == "claude-opus-5"
-        assert "/" not in cfg["author_model"]
+        assert cfg["author_model"] == "anthropic/claude-opus-5"

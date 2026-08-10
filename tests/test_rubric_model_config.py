@@ -48,9 +48,10 @@ class TestAuthorModelResolution:
         p = _cfg(tmp_path, author_model="claude-opus-5")
         assert assay_author._resolve_author_model(p) == "claude-opus-5"
 
-    def test_strips_litellm_prefix(self, tmp_path: Path):
+    def test_preserves_full_id(self, tmp_path: Path):
+        # The prefix is what routes the call; it must survive resolution.
         p = _cfg(tmp_path, author_model="anthropic/claude-opus-5")
-        assert assay_author._resolve_author_model(p) == "claude-opus-5"
+        assert assay_author._resolve_author_model(p) == "anthropic/claude-opus-5"
 
     def test_missing_field_falls_back_to_default(self, tmp_path: Path):
         p = _cfg(tmp_path, judge_model="anthropic/claude-sonnet-5")
@@ -70,7 +71,48 @@ class TestAuthorModelResolution:
     def test_committed_config_resolves_to_opus5(self):
         repo_root = Path(__file__).resolve().parent.parent
         p = repo_root / ".llm_config" / "rubric-judge.json"
-        assert assay_author._resolve_author_model(p) == "claude-opus-5"
+        assert assay_author._resolve_author_model(p) == "anthropic/claude-opus-5"
+
+
+class TestAuthorRouting:
+    def test_anthropic_prefix_routes_to_8765(self):
+        bare, proxy = assay_author._route_author_model("anthropic/claude-opus-5")
+        assert bare == "claude-opus-5"
+        assert proxy == assay_author.DEFAULT_PROXY
+        assert ":8765" in proxy
+
+    def test_openai_prefix_routes_to_codex_8766(self):
+        bare, proxy = assay_author._route_author_model("openai/gpt-5.6-sol")
+        assert bare == "gpt-5.6-sol"
+        assert proxy == assay_author.CODEX_PROXY
+        assert proxy.endswith("/responses") and ":8766" in proxy
+
+    def test_bare_id_defaults_to_anthropic(self):
+        bare, proxy = assay_author._route_author_model("claude-opus-5")
+        assert bare == "claude-opus-5"
+        assert proxy == assay_author.DEFAULT_PROXY
+
+    def test_author_proxy_env_overrides(self, monkeypatch):
+        monkeypatch.setenv("ASSAY_AUTHOR_PROXY", "http://10.0.0.1:9999/responses")
+        _, proxy = assay_author._route_author_model("openai/gpt-5.6-sol")
+        assert proxy == "http://10.0.0.1:9999/responses"
+
+    def test_bridge_call_routes_openai_model(self, monkeypatch):
+        captured: dict[str, str] = {}
+
+        def fake_call(proxy, model, system, user, cached, max_tokens):
+            captured["proxy"] = proxy
+            captured["model"] = model
+            return "text", "", 0, 200
+
+        import assay.judge as assay_judge
+
+        monkeypatch.setattr(assay_judge, "call", fake_call)
+        monkeypatch.delenv("ASSAY_AUTHOR_PROXY", raising=False)
+        out = assay_author._bridge_call("sys", "user", model="openai/gpt-5.6-sol")
+        assert out == "text"
+        assert captured["model"] == "gpt-5.6-sol"  # bare on the wire
+        assert captured["proxy"].endswith("/responses")
 
 
 class TestModelPlumbing:

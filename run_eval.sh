@@ -1448,8 +1448,14 @@ PYSCRIPT
                     # Bare python3 on purpose: stdlib-only, and `uv run`
                     # would pollute stdout via the venv sitecustomize.
                     # Any config problem falls back to the sonnet-5 default.
-                    local COUNCIL_DEFAULT
-                    COUNCIL_DEFAULT="$(python3 -c '
+                    # Derive BOTH the judge council alias and the provider-matched
+                    # ASSAY_PROXY from judge_model, so judge and score share one
+                    # value. anthropic/<m> -> Claude bridge :8765/v1/messages;
+                    # openai/<m> -> Codex bridge :8766/responses (a stray
+                    # 'responses/' segment is stripped for the alias). Line 1 =
+                    # council, line 2 = proxy.
+                    local _RUBRIC_DERIVE COUNCIL_DEFAULT PROXY_DEFAULT
+                    _RUBRIC_DERIVE="$(python3 -c '
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
@@ -1457,15 +1463,28 @@ try:
 except Exception:
     m = ""
 m = m or "anthropic/claude-sonnet-5"
-m = m.split("/", 1)[1] if m.startswith("anthropic/") else m
-name = m[len("claude-"):] if m.startswith("claude-") else m
-print(f"{name}={m}")
+if m.startswith("openai/"):
+    bare = m[len("openai/"):]
+    bare = bare[len("responses/"):] if bare.startswith("responses/") else bare
+    proxy = "http://127.0.0.1:8766/responses"
+else:
+    bare = m[len("anthropic/"):] if m.startswith("anthropic/") else m
+    proxy = "http://127.0.0.1:8765/v1/messages"
+name = bare[len("claude-"):] if bare.startswith("claude-") else bare
+print(f"{name}={bare}")
+print(proxy)
 ' "$RUBRIC_CFG" 2>/dev/null || true)"
-                    [[ "$COUNCIL_DEFAULT" =~ ^[A-Za-z0-9._-]+=[A-Za-z0-9./_-]+$ ]] \
-                        || COUNCIL_DEFAULT='sonnet-5=claude-sonnet-5'
+                    COUNCIL_DEFAULT="${_RUBRIC_DERIVE%%$'\n'*}"
+                    PROXY_DEFAULT="${_RUBRIC_DERIVE#*$'\n'}"
+                    if [[ ! "$COUNCIL_DEFAULT" =~ ^[A-Za-z0-9._-]+=[A-Za-z0-9./_-]+$ ]]; then
+                        log "rubric: WARN could not derive council from judge_model; defaulting to sonnet-5 (check .llm_config/rubric-judge.json judge_model)"
+                        COUNCIL_DEFAULT='sonnet-5=claude-sonnet-5'
+                    fi
+                    [[ "$PROXY_DEFAULT" =~ ^https?:// ]] \
+                        || PROXY_DEFAULT='http://127.0.0.1:8765/v1/messages'
                     local ASSAY_ENV=(
                         "ASSAY_COUNCIL=${RUBRIC_COUNCIL:-$COUNCIL_DEFAULT}"
-                        "ASSAY_PROXY=${RUBRIC_PROXY:-http://127.0.0.1:8765/v1/messages}"
+                        "ASSAY_PROXY=${RUBRIC_PROXY:-$PROXY_DEFAULT}"
                     )
                     local rrc=0
                     uv run multiswebench-rubric export-bundle --harbor-out "$HARBOR_OUT" \

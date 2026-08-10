@@ -1012,7 +1012,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--proxy",
-        default=os.environ.get("ASSAY_PROXY", "http://127.0.0.1:8766/v1/messages"),
+        # Default to the Anthropic bridge (:8765). :8766 now hosts the Codex
+        # Responses bridge, which 404s an Anthropic-shaped /v1/messages body --
+        # so an unset ASSAY_PROXY must not silently land there. run_eval.sh always
+        # sets ASSAY_PROXY explicitly; this default only matters for bare CLI use.
+        default=os.environ.get("ASSAY_PROXY", "http://127.0.0.1:8765/v1/messages"),
     )
     p.set_defaults(func=cmd_judge)
 

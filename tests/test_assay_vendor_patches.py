@@ -145,10 +145,66 @@ class TestDriftPatches:
 
         for proxy in (
             "http://127.0.0.1:8765/v1/messages",  # anthropic/bridge shape
-            "http://127.0.0.1:9999/v1/chat/completions",  # openai shape
+            "http://127.0.0.1:9999/v1/chat/completions",  # openai chat shape
+            "http://127.0.0.1:8766/responses",  # codex responses shape
         ):
             for cached in ("", "evidence packet"):
                 body, _headers = build_request(
                     proxy, "claude-sonnet-5", "system prompt", "question", cached
                 )
                 assert "temperature" not in body, proxy
+
+    def test_p8_responses_endpoint_detection(self):
+        from assay.judge import is_responses_endpoint
+
+        assert is_responses_endpoint("http://127.0.0.1:8766/responses")
+        assert is_responses_endpoint("http://127.0.0.1:8766/v1/responses")
+        assert not is_responses_endpoint("http://127.0.0.1:8765/v1/messages")
+        assert not is_responses_endpoint("http://127.0.0.1:9999/v1/chat/completions")
+
+    def test_p8_responses_branch_body_shape(self):
+        from assay.judge import build_request
+
+        body, headers = build_request(
+            "http://127.0.0.1:8766/responses",
+            "gpt-5.6-sol",
+            "system prompt",
+            "the question",
+            "evidence packet",
+            max_tokens=8000,
+        )
+        assert body["model"] == "gpt-5.6-sol"
+        assert body["instructions"] == "system prompt"
+        assert body["store"] is False  # backend requires; bridge also forces
+        # typed user message so the bridge's fold matcher accepts it
+        item = body["input"][0]
+        assert item["type"] == "message" and item["role"] == "user"
+        assert item["content"][0]["type"] == "input_text"
+        assert "evidence packet" in item["content"][0]["text"]
+        assert "the question" in item["content"][0]["text"]
+        # bridge strips Authorization + injects the real token
+        assert headers["Authorization"].startswith("Bearer ")
+
+    def test_p8_extract_text_handles_responses_output(self):
+        from assay.judge import extract_text
+
+        doc = {
+            "output": [
+                {"type": "reasoning", "summary": []},
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "output_text", "text": "hello "},
+                        {"type": "output_text", "text": "world"},
+                    ],
+                },
+            ]
+        }
+        assert extract_text(doc) == "hello world"
+
+    def test_p8_cli_proxy_default_is_anthropic_bridge(self):
+        # :8766 now hosts the Codex bridge; a bare judge must not default there.
+        src = (ASSAY / "cli.py").read_text()
+        assert 'ASSAY_PROXY", "http://127.0.0.1:8765/v1/messages"' in src
+        assert "8766/v1/messages" not in src
