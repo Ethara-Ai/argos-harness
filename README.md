@@ -181,7 +181,7 @@ EGRESS_FILTER_DISABLE=1 RUBRIC_ENABLE=1 bash run_eval.sh \
 | `--dataset` | The team's dataset file — multi-instance files are split automatically, missing `number_interval` is backfilled from the registry |
 | `--ecr-prefix` | Registry holding the pre-built task images (login happens inside the script) |
 | `--lang` | Task repo language (`python`, `go`, ...); else auto-detected per file |
-| `--no-push --data-dir DIR` | Stage bundles into a local clone instead of pushing to the dataset repo |
+| `--no-push --data-dir DIR` | Stage into a local clone of the publish repo (default `EtharaOrion/milo-bench-samples`). NOTE: git commit/push automation is disabled by design in all modes — publishing is always a manual `git add/commit/push` from the clone |
 | `--parallel N` | Instances run concurrently (default 1; 2–3 max on a laptop — each instance can spawn ~5 containers, and parallelism burns the subscription cap N× faster) |
 | `-k N` | Runs per instance (pass@k; default 1) |
 
@@ -211,8 +211,8 @@ and judging run host-side).
 ### Outputs
 
 - `eval_outputs/` — per-instance working dirs (trajectory, eval, harbor, logs). Regenerable; safe to delete between runs.
-- `milo_bundles/<uuid>/` — the deliverable milo bundles (trajectory + verifier + rubric).
-- `<data-dir>/dataset/<uuid>/`, `<data-dir>/trajectory/<uuid>/` — staging for the dataset repo push.
+- `milo_bundles/<uuid>/` — the deliverable milo bundles (trajectory + verifier + rubric). Wiped between fresh runs.
+- `<data-dir>/<uuid>/` — the same bundle staged flat into the publish clone (`milo-bench-samples` format), accumulating across runs; push manually from there. (Legacy `dataset/`+`trajectory/` split is staged only when no bundle exists, e.g. `RUBRIC_ENABLE=0`.)
 
 ## Rich Logging
 

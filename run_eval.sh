@@ -9,15 +9,15 @@ set -uo pipefail
 # MANY datasets and executes up to --parallel of them at once. Each dataset is
 # one instance/bundle and gets its own harbor export under <tag>_harbor/.
 #
-# After each dataset finishes, its harbor output is staged under two top-level
-# dirs keyed by the dataset uuid: dataset/<uuid>/ (harbor task contents) and
-# trajectory/<uuid>/ (harbor trajectory contents), and a single local commit
-# is made for that dataset. After ALL datasets finish, every
-# accumulated commit is pushed in one network operation against a separate dataset
-# repo (default https://github.com/Ethara-Ai/milo-bench-dataset), cloned on
+# After each dataset finishes, its finished milo bundle (milo_bundles/<uuid>)
+# is staged FLAT into the publish clone as <uuid>/ (milo-bench-samples format);
+# when no bundle exists (RUBRIC_ENABLE=0) the legacy harbor split
+# dataset/<uuid>/ + trajectory/<uuid>/ is staged instead. The publish repo
+# (default https://github.com/EtharaOrion/milo-bench-samples) is cloned on
 # startup into <script dir>/../milo-bench-dataset/ if missing. The GitHub token
 # is read from a .env file at the repo root (GITHUB_TOKEN or GH_TOKEN), falling
-# back to those environment variables. Disable with --no-push.
+# back to those environment variables. Staging is file copies ONLY -- all git
+# commit/push automation is disabled per request; publish manually.
 #
 # Each dataset runs in its own subshell, so its image names, env exports
 # (EVAL_DOCKER_IMAGE_PREFIX / MULTI_SWE_BENCH_SKIP_BUILD / DOCKER_PLATFORM) and
@@ -53,7 +53,7 @@ DOCKER_BUILD_ONLY=false
 FORCE=false
 DATASETS=()
 DATA_PUBLISH_DIR=""
-DATA_REPO="https://github.com/Ethara-Ai/milo-bench-dataset"
+DATA_REPO="https://github.com/EtharaOrion/milo-bench-samples"
 GIT_BRANCH=""
 NO_PUSH=false
 ENV_FILE=""
@@ -120,32 +120,32 @@ Output / stages:
   --force                   Re-run datasets even if their reports already exist
                             (default: resume -- skip datasets/runs already done)
 
-Publishing (one commit per dataset is created; all commits are pushed together at end):
-  Stages under <data-dir>/ with two top-level dirs keyed by the dataset uuid:
-    dataset/<uuid>/      (contents of harbor task/)
-    trajectory/<uuid>/   (contents of harbor trajectory/)
+Publishing (staging only -- all git commit/push automation is deliberately
+disabled; publish manually from the clone when ready):
+  Each finished instance is staged into <data-dir>/ keyed by the dataset uuid:
+    <uuid>/              (flat milo bundle, milo-bench-samples format --
+                          preferred; used whenever milo_bundles/<uuid> exists,
+                          even if rubric scoring ended in WARN/unscored)
+    dataset/<uuid>/ + trajectory/<uuid>/
+                         (legacy harbor split -- fallback when no bundle
+                          exists, e.g. RUBRIC_ENABLE=0)
   <uuid> is the dataset record's required uuid field. Local eval_outputs/ on
-  disk is left untouched -- only the harbor output is published.
-  --data-dir PATH           Local clone of the dataset repo (created on start if missing)
+  disk is left untouched.
+  --data-dir PATH           Local clone of the publish repo (created on start if missing)
                             (default: <script dir>/../milo-bench-dataset/)
-  --data-repo URL           Dataset repo URL; cloned to --data-dir on start if missing,
+  --data-repo URL           Publish repo URL; cloned to --data-dir on start if missing,
                             otherwise the existing clone's origin must match this URL
-                            (default: https://github.com/Ethara-Ai/milo-bench-dataset)
-  --git-branch NAME         Branch to push to                          [default: current branch]
+                            (default: https://github.com/EtharaOrion/milo-bench-samples)
+  --git-branch NAME         Branch push would target (push is disabled)     [default: current branch]
   --env-file PATH           .env file to read the GitHub token from
                             (default: <repo root>/.env, else <script dir>/.env)
-  --no-push                 Stage locally and create per-dataset commits but do NOT fetch/pull
-                            on start or push at end
-                            Token: GITHUB_TOKEN (or GH_TOKEN) read from the .env file first,
-                            then falling back to those environment variables. On start the
-                            clone is fetched and rebased onto origin/<branch> (preserving any
-                            local commits from a previous crashed run); each dataset gets its
-                            own local commit; after all datasets finish, every accumulated
-                            commit is pushed together (retried once on non-fast-forward; on
-                            second failure the commits are kept locally).
-                            Log files, eval_files/repos, logs/ dirs and workdir/**/images
-                            are excluded via .gitignore ("run_eval.sh publish excludes"
-                            section). Any single file >=100 MiB is skipped (GitHub limit).
+  --no-push                 Also skip GitHub token verification at startup.
+                            NOTE: commits and pushes never happen automatically in
+                            either mode (disabled per request); staging is plain
+                            file copies into the clone's working tree. Publish by
+                            hand: cd <data-dir> && git add <uuid> && git commit && git push.
+                            Any single file >=100 MiB is dropped from the staged
+                            copy (GitHub hard limit).
 
 Compression (experimental):
   --compression MODE        none | headroom                              [default: none]
@@ -395,18 +395,17 @@ LOG_DIR="${OUTPUT_BASE}/_parallel_logs"
 mkdir -p "$LOG_DIR"
 RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/run_eval_results.XXXXXX")"
 
-# ── Publish setup: clone/sync the dataset repo, per-dataset commit, single push ──
-# Layout at the data-dir's git toplevel: two top-level dirs keyed by dataset uuid:
-#   dataset/<uuid>/      (contents of harbor task/)
-#   trajectory/<uuid>/   (contents of harbor trajectory/)
-# <uuid> is the dataset record's required uuid field. Each dataset, once staged,
-# produces a single local commit; after all datasets finish
-# every accumulated commit is shipped in one push. The dataset repo (default
-# https://github.com/Ethara-Ai/milo-bench-dataset) is cloned into --data-dir on
-# startup if missing, then fetch+rebased onto origin/<branch> before any work so
-# pre-existing local commits from a previously crashed run survive. The token
-# builds an authenticated URL that is NEVER written to .git/config or logged.
-# Outside a usable clone (or with --no-push), artifacts are staged locally only.
+# ── Publish setup: clone the publish repo; staging is file copies only ──
+# Layout at the data-dir's git toplevel, keyed by dataset uuid:
+#   <uuid>/              (flat milo bundle, milo-bench-samples format -- preferred)
+#   dataset/<uuid>/ + trajectory/<uuid>/   (legacy harbor split -- fallback when
+#                                           no bundle exists, e.g. RUBRIC_ENABLE=0)
+# <uuid> is the dataset record's required uuid field. The publish repo (default
+# https://github.com/EtharaOrion/milo-bench-samples) is cloned into --data-dir
+# on startup if missing. The token builds an authenticated URL that is NEVER
+# written to .git/config or logged. All git commit/push automation is disabled
+# per request (see the three DISABLED sentinels) -- publish manually from the
+# clone. With --no-push, token verification is skipped too.
 
 read_env_var() {
     [[ -f "$1" ]] || return 0
@@ -773,8 +772,8 @@ if [[ -z "$DATA_REPO_ROOT" ]]; then
 fi
 
 PUBLISH_BASE="$DATA_REPO_ROOT"
-mkdir -p "$PUBLISH_BASE/dataset" "$PUBLISH_BASE/trajectory"
-echo "Publish base: $PUBLISH_BASE  (dataset/<uuid>/{harbor task}, trajectory/<uuid>/{harbor trajectory})"
+mkdir -p "$PUBLISH_BASE"
+echo "Publish base: $PUBLISH_BASE  (<uuid>/ flat milo bundle; legacy dataset/+trajectory/ split when no bundle)"
 
 if [[ "$DATA_CLONE_OK" == true ]]; then
     GIT_BRANCH="${GIT_BRANCH:-$(git -C "$DATA_REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)}"
@@ -998,39 +997,59 @@ stage_dataset() {
     fi
 
     local uuid="$dataset_uuid"
+    # Preferred source: the finished milo bundle, staged FLAT at the repo root
+    # (milo-bench-samples format: <publish-base>/<uuid>/). Path computed from
+    # globals on purpose -- the rubric block's MILO_DEST/MILO_BUNDLE locals are
+    # unset when RUBRIC_ENABLE=0 and would abort under `set -u`.
+    local bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}/${uuid}"
+    local d_bundle="$PUBLISH_BASE/$uuid"
     local d_dataset="$PUBLISH_BASE/dataset/$uuid"
     local d_traj="$PUBLISH_BASE/trajectory/$uuid"
 
-    if [[ -d "$harbor_out/task" ]]; then
-        rm -rf "$d_dataset"; mkdir -p "$d_dataset"
-        # eval_files/ inside harbor task can contain CLONED repos (each with their own .git).
-        # Without stripping, `git add` records empty submodule gitlinks (mode 160000) instead
-        # of files. Originals under eval_outputs/ are untouched.
-        cp -R "$harbor_out/task/." "$d_dataset/" 2>/dev/null || log "data: WARN could not copy harbor task for $iid (uuid=$uuid)"
-        find "$d_dataset" -name .git -prune -exec rm -rf {} + 2>/dev/null || true
+    if [[ -d "$bundle_src" ]]; then
+        # Copying only the per-uuid dir keeps the sibling verdicts/ working
+        # store (judge scratch, not a deliverable) out of the publish clone.
+        rm -rf "$d_bundle"; mkdir -p "$d_bundle"
+        if cp -R "$bundle_src/." "$d_bundle/" 2>/dev/null; then
+            find "$d_bundle" -name .git -prune -exec rm -rf {} + 2>/dev/null || true
+            log "data: staged uuid=$uuid (flat milo bundle) <- iid=$iid -> $PUBLISH_BASE"
+        else
+            log "data: WARN could not copy milo bundle $bundle_src for $iid (uuid=$uuid)"
+        fi
     else
-        log "data: WARN harbor task dir missing at $harbor_out/task for $iid"
-    fi
+        # Legacy fallback (no rubric bundle, e.g. RUBRIC_ENABLE=0): stage the
+        # harbor output split into dataset/<uuid> + trajectory/<uuid>.
+        if [[ -d "$harbor_out/task" ]]; then
+            rm -rf "$d_dataset"; mkdir -p "$d_dataset"
+            # eval_files/ inside harbor task can contain CLONED repos (each with their own .git).
+            # Without stripping, `git add` records empty submodule gitlinks (mode 160000) instead
+            # of files. Originals under eval_outputs/ are untouched.
+            cp -R "$harbor_out/task/." "$d_dataset/" 2>/dev/null || log "data: WARN could not copy harbor task for $iid (uuid=$uuid)"
+            find "$d_dataset" -name .git -prune -exec rm -rf {} + 2>/dev/null || true
+        else
+            log "data: WARN harbor task dir missing at $harbor_out/task for $iid"
+        fi
 
-    if [[ -d "$harbor_out/trajectory" ]]; then
-        mkdir -p "$d_traj"
-        local _mdir _mname _copied=0
-        for _mdir in "$harbor_out/trajectory"/*/; do
-            [[ -d "$_mdir" ]] || continue
-            _mname="$(basename "$_mdir")"
-            rm -rf "$d_traj/$_mname"; mkdir -p "$d_traj/$_mname"
-            if cp -R "$_mdir." "$d_traj/$_mname/" 2>/dev/null; then
-                _copied=1
-            else
-                log "data: WARN could not copy harbor trajectory model $_mname for $iid (uuid=$uuid)"
-            fi
-        done
-        [[ $_copied -eq 0 ]] && log "data: WARN no model trajectory subdirs under $harbor_out/trajectory for $iid"
-        find "$d_traj" -name .git -prune -exec rm -rf {} + 2>/dev/null || true
-    else
-        log "data: WARN harbor trajectory dir missing at $harbor_out/trajectory for $iid"
+        if [[ -d "$harbor_out/trajectory" ]]; then
+            mkdir -p "$d_traj"
+            local _mdir _mname _copied=0
+            for _mdir in "$harbor_out/trajectory"/*/; do
+                [[ -d "$_mdir" ]] || continue
+                _mname="$(basename "$_mdir")"
+                rm -rf "$d_traj/$_mname"; mkdir -p "$d_traj/$_mname"
+                if cp -R "$_mdir." "$d_traj/$_mname/" 2>/dev/null; then
+                    _copied=1
+                else
+                    log "data: WARN could not copy harbor trajectory model $_mname for $iid (uuid=$uuid)"
+                fi
+            done
+            [[ $_copied -eq 0 ]] && log "data: WARN no model trajectory subdirs under $harbor_out/trajectory for $iid"
+            find "$d_traj" -name .git -prune -exec rm -rf {} + 2>/dev/null || true
+        else
+            log "data: WARN harbor trajectory dir missing at $harbor_out/trajectory for $iid"
+        fi
+        log "data: staged uuid=$uuid (dataset/, trajectory/) <- iid=$iid -> $PUBLISH_BASE"
     fi
-    log "data: staged uuid=$uuid (dataset/, trajectory/) <- iid=$iid -> $PUBLISH_BASE"
 
     # GitHub's hard 100 MiB per-file limit would reject the WHOLE push. Drop large
     # files from THIS staged copy (originals under eval_outputs/ are untouched).
@@ -1042,7 +1061,7 @@ stage_dataset() {
         log "data: SKIP $_bigf (${_bigsz} bytes >= 100 MiB GitHub limit)"
         rm -f "$_bigf" 2>/dev/null || true
         _bign=$((_bign+1))
-    done < <(find "$d_dataset" "$d_traj" -type f -size +$((LARGE_LIMIT_BYTES - 1))c 2>/dev/null)
+    done < <(find "$d_bundle" "$d_dataset" "$d_traj" -type f -size +$((LARGE_LIMIT_BYTES - 1))c 2>/dev/null)
     [[ $_bign -gt 0 ]] && log "data: skipped $_bign file(s) >=100MiB for uuid=$uuid (not pushed)"
 
     # Per-dataset local commit. Serialized via a separate mkdir lock (independent

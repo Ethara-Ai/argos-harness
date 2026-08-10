@@ -71,6 +71,31 @@ class TestRunEvalWiring:
         assert "multiswebench-rubric attach" not in run_eval_src
         assert "multiswebench-rubric judge" not in run_eval_src
 
+    def test_publish_stages_flat_milo_bundle_first(self, run_eval_src: str):
+        """stage_dataset prefers the finished milo bundle staged FLAT at the
+        publish-base root (milo-bench-samples format), with the legacy harbor
+        dataset/+trajectory/ split kept as the no-bundle fallback."""
+        fn = run_eval_src.index("stage_dataset() {")
+        fn_end = run_eval_src.index("process_dataset()", fn)
+        body = run_eval_src[fn:fn_end]
+        # bundle source is computed from globals (set -u safe), per-uuid dir only
+        src_idx = body.index(
+            'bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}/${uuid}"'
+        )
+        # the copy uses the per-uuid dir, so the sibling verdicts/ store can
+        # never leak into the publish clone
+        copy_idx = body.index('cp -R "$bundle_src/." "$d_bundle/"')
+        assert 'd_bundle="$PUBLISH_BASE/$uuid"' in body  # FLAT at repo root
+        # legacy fallback still present, after the bundle branch
+        legacy_idx = body.index('cp -R "$harbor_out/task/."')
+        assert src_idx < copy_idx < legacy_idx
+
+    def test_publish_repo_default_is_samples(self, run_eval_src: str):
+        assert (
+            'DATA_REPO="https://github.com/EtharaOrion/milo-bench-samples"'
+            in run_eval_src
+        )
+
     def test_syntax_parses(self):
         import subprocess
 
