@@ -64,12 +64,33 @@ proxy/
 │   └── errors.py                  #   Anthropic error classification
 ├── claude_code_bridge.sh          # start | stop | status | check | monitor (background + watchdog)
 ├── claude-code-oauth.json         # the LLM config you pass to the harness
+├── codex_bridge/                  # sibling bridge for OpenAI Codex (port 8766)
+│   ├── {bridge,credentials,errors,shaping,sse}.py + __main__.py
+│   └── probe.py                   #   Phase-0 backend probe (diagnostic, safe to delete)
+├── codex_bridge.sh                # same start|stop|status|check|monitor, port 8766
 ├── .gitignore                     # ignores runtime artifacts (*.pid, logs/)
 └── README.md                      # this file
 ```
 
 No new dependencies: the proxy only needs `fastapi`, `uvicorn`, `httpx`, which
 are already in the harness `.venv`.
+
+### The Codex bridge (port 8766)
+
+`codex_bridge/` is the OpenAI analogue of `claude_code_bridge/`: it injects your
+**ChatGPT-subscription** Codex token (from plain `~/.codex/auth.json` — no
+Keychain; run `codex` and log in first) so trajectory generation runs on the
+subscription. It speaks the OpenAI **Responses** API, so point the harness at it
+with `.llm_config/codex.json` (`model: openai/gpt-5.6-sol`,
+`base_url: host.docker.internal:8766`, or `172.17.0.1:8766` on Linux/EC2).
+`proxy/codex_bridge.sh start` runs it alongside the Claude bridge. It is a
+deliberately simple near-passthrough (no TLS-fingerprint impersonation — a single
+account on the same machine as the `codex` CLI does not need it); it forces
+`stream:true`/`store:false`, strips the params the backend rejects
+(`temperature`/`max_output_tokens`/`top_p`), folds the system prompt into the
+first user message, and aggregates the upstream SSE back to JSON for
+non-streaming callers. Only `gpt-5.6-sol` is accepted by the ChatGPT-account
+backend. Errors use the same `aurora_bridge` envelope as the Claude bridge.
 
 ---
 

@@ -160,6 +160,18 @@ proxy/claude_code_bridge.sh start    # start if not running
 it starts and never re-reads the keychain. After switching accounts with
 `claude /login`, always `stop` + `start` the bridge.
 
+**Codex trajectories (optional).** To generate trajectories on an OpenAI Codex
+model billed to your ChatGPT subscription, start the sibling bridge (port 8766)
+and pass `--llm-config .llm_config/codex.json` instead:
+
+```bash
+proxy/codex_bridge.sh start          # reads ~/.codex/auth.json (run `codex` + log in first)
+```
+
+It runs alongside the Claude bridge, so you can mix providers: Codex trajectory
++ Claude rubric author/judge is the intended "new delivery path". Only
+`gpt-5.6-sol` is accepted by the ChatGPT-account Codex backend.
+
 ### The run
 
 ```bash
@@ -199,14 +211,25 @@ empty trajectories, not partial ones.
 
 | Role | Where configured | Default |
 |---|---|---|
-| Trajectory agent | `.llm_config/claude-code.json` → `model` | `anthropic/claude-opus-4-8` |
-| Rubric author (writes TRUTH.md narration + R-items) | `.llm_config/rubric-judge.json` → `author_model` (bare bridge id) | `claude-opus-5` |
-| Judge + anchoring gate | `.llm_config/rubric-judge.json` → `judge_model` (litellm id; council name derived from it) | `anthropic/claude-sonnet-5` |
+| Trajectory agent | `--llm-config` file → `model` (`claude-code.json` or `codex.json`) | `anthropic/claude-opus-4-8` |
+| Rubric author (writes TRUTH.md narration + R-items) | `.llm_config/rubric-judge.json` → `author_model` | `anthropic/claude-opus-5` |
+| Judge + anchoring gate | `.llm_config/rubric-judge.json` → `judge_model` (council name derived from it) | `anthropic/claude-sonnet-5` |
 
-Note the `base_url` split: `claude-code.json` uses `host.docker.internal:8765`
-(bridge as seen from inside a container; on plain-Linux hosts edit this to
-`172.17.0.1:8765`), while `rubric-judge.json` uses `127.0.0.1:8765` (authoring
-and judging run host-side).
+**Prefix routing.** All three slots take a full litellm-style id whose provider
+prefix selects the bridge automatically: `anthropic/<m>` → Claude bridge
+(`:8765/v1/messages`), `openai/<m>` → Codex bridge (`:8766/responses`). So making
+any slot use Codex is a one-field config edit — no new flags. **Discipline:**
+vary the *trajectory* model freely (it's the experiment variable), but keep
+`author_model`+`judge_model` pinned to Claude for a delivery batch — the rubric
+is the fixed measuring stick, and scores are only comparable when the same
+author/judge graded every run. (An `openai/` judge additionally needs
+`judge_model: "openai/responses/<m>"` + `base_url` on `:8766` for the
+anchoring-gate transport; a single run can't mix providers across judge seats.)
+
+Note the `base_url` split: the trajectory config uses `host.docker.internal:8765`
+(or `:8766`) — the bridge as seen from inside a container; on plain-Linux hosts
+edit this to `172.17.0.1:<port>` — while `rubric-judge.json` uses `127.0.0.1`
+(authoring and judging run host-side).
 
 ### Outputs
 

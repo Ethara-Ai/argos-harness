@@ -1,7 +1,7 @@
 # Rubric Layer — Milo-Format Process Scoring for Multi-SWE-bench Trajectories
 
 *Status: implemented, tested (180+ tests incl. a byte-level corpus replay), and piloted live on tortoise-orm — 2026-08-07.*
-*Output format: exact `milo-bench-samples` bundle structure. Scorer: vendored `assay/` (corpus-equivalent, proven by replay). Models come from `.llm_config/rubric-judge.json`: `author_model` (default `claude-opus-5`) writes the rubrics, `judge_model` (default `anthropic/claude-sonnet-5`) grades runs — both via the OAuth bridge.*
+*Output format: exact `milo-bench-samples` bundle structure. Scorer: vendored `assay/` (corpus-equivalent, proven by replay). Models come from `.llm_config/rubric-judge.json`: `author_model` (default `anthropic/claude-opus-5`) writes the rubrics, `judge_model` (default `anthropic/claude-sonnet-5`) grades runs. Both are prefix-routed litellm ids — `anthropic/<m>` → Claude bridge `:8765`, `openai/<m>` → Codex bridge `:8766` — but deliveries keep both on Claude (see Provider routing in §3).*
 
 ---
 
@@ -51,7 +51,9 @@ With `RUBRIC_ENABLE=1`, after harbor conversion each task flows through:
 4. **`assay score --write`** — deterministic channel + composition; writes `process.json` / `final_score.md` and merges `score_outcome…score_rl` + the `assay{}` block into `result.json`.
 5. **staging** — the finished bundle is copied FLAT into the publish clone as `<data-dir>/<uuid>/` (milo-bench-samples format; the sibling `verdicts/` judge store is never staged). Git commit/push automation is disabled by design — publish manually from the clone.
 
-Model config (`.llm_config/rubric-judge.json`): `author_model` — bare bridge id that writes the TRUTH.md narration + R-items (default `claude-opus-5`; falls back to `claude-sonnet-5` if the field is absent); `judge_model` — litellm id used for the anchoring gate and the judge council (default `anthropic/claude-sonnet-5`; legacy key `model` still honored). The council name is derived from `judge_model` (`anthropic/claude-sonnet-5` → `sonnet-5=claude-sonnet-5`) once per task and shared by judge and score, so the two can never disagree.
+Model config (`.llm_config/rubric-judge.json`): `author_model` — full litellm id that writes the TRUTH.md narration + R-items (default `anthropic/claude-opus-5`; falls back to `claude-sonnet-5` if absent); `judge_model` — litellm id used for the anchoring gate and the judge council (default `anthropic/claude-sonnet-5`; legacy key `model` still honored). The council name and the `ASSAY_PROXY` are both derived from `judge_model` once per task and shared by judge and score, so the two can never disagree.
+
+**Provider routing.** The `author_model`/`judge_model` prefix picks the bridge: `anthropic/<m>` → Claude bridge (`:8765/v1/messages`), `openai/<m>` → Codex bridge (`:8766/responses`; assay patch #8 emits the Responses body shape there). `run_eval.sh` strips `openai/`+`responses/` when deriving the council alias, and logs a loud WARN if derivation falls back — an `openai/` judge can never silently be graded by Claude. The author self-routes from its own prefix (`ASSAY_AUTHOR_PROXY` overrides), independent of the judge. **Discipline:** the trajectory model is the experiment variable; author+judge stay pinned to Claude for a delivery batch — the rubric is the fixed measuring stick. An `openai/` judge needs `judge_model: "openai/responses/<m>"` + `base_url` on `:8766` for the anchoring-gate litellm transport; a single run can't mix providers across judge seats (one `ASSAY_PROXY`).
 
 Knobs (env): `RUBRIC_BUNDLE_DEST` (default `<repo>/milo_bundles` — must stay under the repo so each bundle's emitted `test_output.py` can self-locate the vendored assay package), `RUBRIC_COUNCIL` (override; default derived from the config's `judge_model` as above), `RUBRIC_PROXY` (default `http://127.0.0.1:8765/v1/messages`), `RUBRIC_LLM_CONFIG` (default `.llm_config/rubric-judge.json`). The bridge must be running for authoring/judging.
 
