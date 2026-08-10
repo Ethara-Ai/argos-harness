@@ -1,0 +1,13 @@
+{
+  "_auth_mode": "codex-oauth-subscription (via proxy/codex_bridge, not a metered API key)",
+  "_model_note": "Use openai/<model> (NOT openai/responses/<model>): the SDK routes gpt-5* via the native Responses path; the responses/ segment would leak into the body model id, break cost lookup, and nest output dirs. Only gpt-5.6-sol is accepted by the ChatGPT-account Codex backend (verified 2026-08-10).",
+  "_ec2_note": "On Linux/EC2 change base_url host to 172.17.0.1:8766 (host.docker.internal is macOS Docker Desktop only).",
+  "usage_id": "codex-oauth",
+  "model": "openai/gpt-5.6-sol",
+  "base_url": "http://host.docker.internal:8766",
+  "api_key": "sk-codex-oauth-bridge-stub",
+  "enable_encrypted_reasoning": true,
+  "reasoning_effort": "high",
+  "num_retries": 2,
+  "timeout": 600
+}

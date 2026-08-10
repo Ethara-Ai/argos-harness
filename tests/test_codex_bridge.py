@@ -1,0 +1,469 @@
+"""Unit tests for the Codex bridge (proxy/codex_bridge).
+
+First proxy tests in the repo. proxy/ is not on the default import path, so we
+insert it. fastapi arrives transitively; skip cleanly if absent.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "proxy"))
+
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
+
+from codex_bridge import (  # noqa: E402
+    credentials as cred,
+    errors as cerr,
+)
+from codex_bridge.shaping import (  # noqa: E402
+    DEFAULT_INSTRUCTIONS,
+    STRIP_PARAMS,
+    shape_body,
+)
+from codex_bridge.sse import SSEParser, aggregate, iter_events  # noqa: E402
+
+
+# --- shaping -----------------------------------------------------------------
+class TestShaping:
+    def _body(self, **extra):
+        b = {
+            "model": "gpt-5.6-sol",
+            "instructions": "SYSTEM PROMPT HERE",
+            "input": [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "hi"}],
+                }
+            ],
+            "stream": False,
+            "store": True,
+            "tools": [],
+        }
+        b.update(extra)
+        return b
+
+    def test_forces_stream_and_store(self):
+        out = shape_body(self._body())
+        assert out["stream"] is True
+        assert out["store"] is False
+
+    def test_strips_rejected_params(self):
+        out = shape_body(
+            self._body(
+                temperature=0.5,
+                max_output_tokens=64,
+                top_p=0.9,
+                prompt_cache_retention="24h",
+            )
+        )
+        for k in STRIP_PARAMS:
+            assert k not in out
+
+    def test_preserves_passthrough_params(self):
+        out = shape_body(
+            self._body(
+                include=["reasoning.encrypted_content"],
+                reasoning={"effort": "high"},
+                tool_choice="auto",
+                parallel_tool_calls=True,
+            )
+        )
+        assert out["include"] == ["reasoning.encrypted_content"]
+        assert out["reasoning"] == {"effort": "high"}
+        assert out["tool_choice"] == "auto"
+        assert out["parallel_tool_calls"] is True
+        assert out["model"] == "gpt-5.6-sol"
+
+    def test_folds_into_typed_user_message(self):
+        out = shape_body(self._body())
+        first = out["input"][0]
+        assert first["role"] == "user"
+        assert first["content"][0]["type"] == "input_text"
+        assert "SYSTEM PROMPT HERE" in first["content"][0]["text"]
+        # original user text still present after the folded prefix
+        assert any("hi" == c.get("text") for c in first["content"])
+        assert out["instructions"] == DEFAULT_INSTRUCTIONS
+
+    def test_folds_into_bare_user_message(self):
+        b = self._body()
+        b["input"] = [
+            {"role": "user", "content": [{"type": "input_text", "text": "hi"}]}
+        ]
+        out = shape_body(b)
+        first = out["input"][0]
+        assert "SYSTEM PROMPT HERE" in first["content"][0]["text"]
+
+    def test_synthesizes_user_message_when_absent(self):
+        b = self._body()
+        b["input"] = []
+        out = shape_body(b)
+        assert len(out["input"]) == 1
+        assert out["input"][0]["role"] == "user"
+        assert "SYSTEM PROMPT HERE" in out["input"][0]["content"][0]["text"]
+
+    def test_does_not_mutate_input(self):
+        b = self._body()
+        original = json.loads(json.dumps(b))
+        shape_body(b)
+        assert b == original  # deep-copy semantics
+
+    def test_single_shape_not_double_folded(self):
+        # Shaping once folds once; the harness must not shape twice, but we prove
+        # the fold prefix appears exactly once for a single call.
+        out = shape_body(self._body())
+        text = out["input"][0]["content"][0]["text"]
+        assert text.count("Context (system prompt):") == 1
+
+    def test_missing_instructions_gets_default(self):
+        b = self._body()
+        b.pop("instructions")
+        out = shape_body(b)
+        assert out["instructions"] == DEFAULT_INSTRUCTIONS
+
+
+# --- SSE parsing -------------------------------------------------------------
+class TestSSEParser:
+    def test_single_event(self):
+        p = SSEParser()
+        evs = p.feed('event: response.created\ndata: {"type":"response.created"}\n\n')
+        assert len(evs) == 1
+        assert evs[0].event == "response.created"
+        doc = evs[0].json()
+        assert doc is not None and doc["type"] == "response.created"
+
+    def test_chunk_boundary_split(self):
+        p = SSEParser()
+        assert p.feed("event: response.created\nda") == []
+        doc = p.feed('ta: {"type":"x"}\n\n')[0].json()
+        assert doc is not None and doc["type"] == "x"
+
+    def test_multiline_data(self):
+        p = SSEParser()
+        evs = p.feed('data: {"a":1}\ndata: still-part-of-block\n\n')
+        # two data lines joined with newline
+        assert "\n" in evs[0].data
+
+    def test_comments_ignored(self):
+        p = SSEParser()
+        evs = p.feed(': keepalive\n\ndata: {"t":1}\n\n')
+        assert len(evs) == 1
+
+    def test_crlf(self):
+        p = SSEParser()
+        evs = p.feed('data: {"t":1}\r\n\r\n')
+        doc = evs[0].json()
+        assert doc is not None and doc["t"] == 1
+
+    def test_done_sentinel_maps_to_none(self):
+        p = SSEParser()
+        evs = p.feed("data: [DONE]\n\n")
+        assert evs[0].json() is None
+
+
+# --- SSE aggregation (the probe-verified quirks) -----------------------------
+def _stream(*events) -> list:
+    """Build raw SSE text from (event_name, payload_dict) pairs."""
+    parts = []
+    for name, payload in events:
+        parts.append(f"event: {name}\ndata: {json.dumps(payload)}\n\n")
+    return list(iter_events(["".join(parts)]))
+
+
+class TestAggregate:
+    def test_output_injected_from_item_done(self):
+        # Backend leaves response.completed output EMPTY; real items come via
+        # response.output_item.done. Aggregator must inject them.
+        item = {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "pong"}],
+        }
+        events = _stream(
+            ("response.created", {"type": "response.created"}),
+            (
+                "response.output_item.done",
+                {"type": "response.output_item.done", "item": item},
+            ),
+            (
+                "response.completed",
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_1",
+                        "status": "completed",
+                        "output": [],
+                        "usage": {"total_tokens": 3},
+                    },
+                },
+            ),
+        )
+        agg = aggregate(events)
+        assert agg.ok and agg.kind == "completed"
+        assert agg.response is not None
+        assert agg.response["output"] == [item]
+        assert agg.response["usage"]["total_tokens"] == 3
+
+    def test_completed_with_populated_output_kept(self):
+        item = {"type": "message"}
+        events = _stream(
+            (
+                "response.completed",
+                {
+                    "type": "response.completed",
+                    "response": {"output": [item], "status": "completed"},
+                },
+            ),
+        )
+        agg = aggregate(events)
+        assert agg.response is not None
+        assert agg.response["output"] == [item]
+
+    def test_incomplete_is_ok(self):
+        events = _stream(
+            (
+                "response.incomplete",
+                {
+                    "type": "response.incomplete",
+                    "response": {"status": "incomplete", "output": []},
+                },
+            ),
+        )
+        agg = aggregate(events)
+        assert agg.ok and agg.kind == "incomplete"
+
+    def test_failed_event_classified(self):
+        events = _stream(
+            (
+                "response.failed",
+                {
+                    "type": "response.failed",
+                    "response": {"error": {"message": "boom", "code": "server_error"}},
+                },
+            ),
+        )
+        agg = aggregate(events)
+        assert agg.kind == "failed"
+        assert agg.error is not None
+        assert agg.error["message"] == "boom"
+
+    def test_error_event(self):
+        events = _stream(("error", {"type": "error", "error": {"message": "bad"}}))
+        agg = aggregate(events)
+        assert agg.kind == "failed"
+
+    def test_no_terminal_is_truncated(self):
+        events = _stream(("response.created", {"type": "response.created"}))
+        agg = aggregate(events)
+        assert agg.kind == "truncated"
+
+
+# --- error classification / envelope parity ----------------------------------
+class TestErrorClassification:
+    def test_401_is_token_invalid(self):
+        c = cerr.classify_codex_error(401, b'{"detail":"unauthorized"}', {})
+        assert c.kind == cerr.ErrorKind.OAUTH_TOKEN_INVALID
+
+    def test_400_is_invalid_request(self):
+        c = cerr.classify_codex_error(
+            400, b'{"detail":"Unsupported parameter: temperature"}', {}
+        )
+        assert c.kind == cerr.ErrorKind.INVALID_REQUEST
+        assert "temperature" in c.message
+
+    def test_429_usage_cap_is_subscription_cap(self):
+        c = cerr.classify_codex_error(
+            429, b'{"detail":"You have hit your usage limit"}', {}
+        )
+        assert c.kind == cerr.ErrorKind.SUBSCRIPTION_CAP
+        assert c.reset_at_unix is not None
+
+    def test_429_short_throttle(self):
+        c = cerr.classify_codex_error(
+            429, b'{"detail":"slow down"}', {"Retry-After": "5"}
+        )
+        assert c.kind == cerr.ErrorKind.TRANSIENT_THROTTLE
+
+    def test_5xx_retryable(self):
+        c = cerr.classify_codex_error(503, b"upstream down", {})
+        assert c.kind == cerr.ErrorKind.UPSTREAM_5XX
+        assert c.kind.is_retryable
+
+    def test_failed_event_default_retryable(self):
+        c = cerr.classify_failed_event({"message": "transient"})
+        assert c.kind.is_retryable
+
+    def test_envelope_kind_strings_match_claude(self):
+        # subscription_cap string is load-bearing for assay backoff.
+        from claude_code_bridge.errors import ErrorKind as ClaudeKind
+
+        assert cerr.ErrorKind is ClaudeKind
+        assert cerr.ErrorKind.SUBSCRIPTION_CAP.value == "subscription_cap"
+
+
+# --- credentials -------------------------------------------------------------
+def _jwt(exp: float | None) -> str:
+    header = base64.urlsafe_b64encode(b'{"alg":"none"}').rstrip(b"=").decode()
+    claims: dict[str, Any] = {
+        "https://api.openai.com/auth": {"chatgpt_account_id": "acct-xyz"}
+    }
+    if exp is not None:
+        claims["exp"] = exp
+    payload = (
+        base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+    )
+    return f"{header}.{payload}.sig"
+
+
+def _auth_doc(exp: float | None = None, rt="rt.old"):
+    return {
+        "auth_mode": "chatgpt",
+        "tokens": {
+            "access_token": _jwt(exp),
+            "refresh_token": rt,
+            "id_token": "id.tok",
+            "account_id": "acct-from-file",
+        },
+        "last_refresh": "2026-08-10T10:00:00",
+        "some_unknown_field": {"keep": "me"},
+    }
+
+
+class TestCredentials:
+    def test_loads_from_file(self, tmp_path, monkeypatch):
+        p = tmp_path / "auth.json"
+        p.write_text(json.dumps(_auth_doc(exp=time.time() + 9999)))
+        monkeypatch.setenv("AURORA_CODEX_AUTH_PATH", str(p))
+        monkeypatch.delenv("CODEX_CREDENTIALS", raising=False)
+        c = cred.load_credentials()
+        assert c.account_id == "acct-from-file"
+        assert c.refresh_token == "rt.old"
+
+    def test_account_id_from_jwt_when_absent_in_file(self, tmp_path, monkeypatch):
+        doc = _auth_doc(exp=time.time() + 9999)
+        doc["tokens"].pop("account_id")
+        p = tmp_path / "auth.json"
+        p.write_text(json.dumps(doc))
+        monkeypatch.setenv("AURORA_CODEX_AUTH_PATH", str(p))
+        monkeypatch.delenv("CODEX_CREDENTIALS", raising=False)
+        c = cred.load_credentials()
+        assert c.account_id == "acct-xyz"  # from JWT claim
+
+    def test_exp_parsing(self):
+        fresh = cred.CodexCredentials.from_document(_auth_doc(exp=time.time() + 9999))
+        assert not fresh.is_expired()
+        stale = cred.CodexCredentials.from_document(_auth_doc(exp=time.time() - 10))
+        assert stale.is_expired()
+
+    def test_refresh_is_form_encoded_and_writes_back(self, tmp_path, monkeypatch):
+        p = tmp_path / "auth.json"
+        p.write_text(json.dumps(_auth_doc(exp=time.time() - 10, rt="rt.old")))
+        monkeypatch.setenv("AURORA_CODEX_AUTH_PATH", str(p))
+        monkeypatch.delenv("CODEX_CREDENTIALS", raising=False)
+
+        captured = {}
+
+        class FakeResp:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "access_token": _jwt(time.time() + 9999),
+                    "refresh_token": "rt.new",
+                    "id_token": "id.new",
+                }
+
+        class FakeClient:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def post(self, url, data=None, headers=None, **k):
+                captured["url"] = url
+                captured["data"] = data
+                captured["headers"] = headers
+                return FakeResp()
+
+        monkeypatch.setattr(cred.httpx, "Client", FakeClient)
+
+        provider = cred.CodexCredentialProvider()
+        token = provider.get_access_token()
+        assert token  # refreshed successfully
+        # form-encoded grant, correct client id
+        assert (
+            captured["headers"]["content-type"] == "application/x-www-form-urlencoded"
+        )
+        assert captured["data"]["grant_type"] == "refresh_token"
+        assert captured["data"]["client_id"] == cred.CODEX_CLIENT_ID
+        # write-back happened and preserved the unknown field
+        doc = json.loads(p.read_text())
+        assert doc["tokens"]["refresh_token"] == "rt.new"
+        assert doc["some_unknown_field"] == {"keep": "me"}
+        assert doc["tokens"]["account_id"] == "acct-from-file"
+
+    def test_missing_auth_raises(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AURORA_CODEX_AUTH_PATH", str(tmp_path / "nope.json"))
+        monkeypatch.delenv("CODEX_CREDENTIALS", raising=False)
+        with pytest.raises(cred.CredentialsError):
+            cred.load_credentials()
+
+    def test_inline_env_source(self, monkeypatch):
+        monkeypatch.setenv(
+            "CODEX_CREDENTIALS", json.dumps(_auth_doc(exp=time.time() + 9999))
+        )
+        c = cred.load_credentials()
+        assert c.refresh_token == "rt.old"
+
+
+# --- routing / app behavior --------------------------------------------------
+class TestAppRouting:
+    def _client(self, monkeypatch):
+        from codex_bridge.bridge import build_app
+        from fastapi.testclient import TestClient
+
+        class FakeProvider(cred.CodexCredentialProvider):
+            def get_access_token(self) -> str:
+                return "tok-abc"
+
+            def get_account_id(self):
+                return "acct-1"
+
+            def force_reload(self) -> None:
+                pass
+
+        return TestClient(build_app(FakeProvider()))
+
+    def test_healthz(self, monkeypatch):
+        r = self._client(monkeypatch).get("/healthz")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert r.json()["account_id"] == "acct-1"
+
+    def test_unknown_path_404_with_hint(self, monkeypatch):
+        r = self._client(monkeypatch).post("/v1/messages", json={})
+        assert r.status_code == 404
+        assert "8765" in r.json()["error"]["message"]
+
+    def test_bad_json_body_400(self, monkeypatch):
+        r = self._client(monkeypatch).post(
+            "/responses",
+            content=b"{not json",
+            headers={"content-type": "application/json"},
+        )
+        assert r.status_code == 400
