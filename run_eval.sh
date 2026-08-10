@@ -1394,13 +1394,40 @@ PYSCRIPT
 
     [[ "$NEED_WORK" == false && "$status" == "done" ]] && status="skipped"
 
+    # ── Publish gate for the export tail (harbor → rubric → staging) ─────────
+    # Only run the tail when this invocation can publish verifiable results:
+    #   - never on --docker-build-only (nothing was executed);
+    #   - never on --skip-eval (trajectory-only pass: converting now would bake
+    #     no_signal scores into result.json and re-stage stale bundles);
+    #   - otherwise require eval evidence: at least one run_<i>/output.report.json
+    #     under RUN_BASE. Resume passes with reports already on disk qualify
+    #     naturally, so the NEED_WORK=false path keeps re-exporting as before.
+    local PUBLISH_TAIL=false HAVE_REPORT=""
+    if [[ "$SKIP_EVAL" == true ]]; then
+        log "harbor: skip (--skip-eval: trajectory-only invocation, no eval evidence to export)"
+    elif [[ "$DOCKER_BUILD_ONLY" == false ]]; then
+        HAVE_REPORT=$(find "$RUN_BASE" -name output.report.json -not -path "*/eval_files/*" 2>/dev/null | head -1 || true)
+        if [[ -n "$HAVE_REPORT" ]]; then
+            PUBLISH_TAIL=true
+            # Partial coverage is a WARN, not a skip: uncovered runs surface as
+            # no_signal in the converter and assay's B1 gate voids them anyway.
+            local _mr=0 _mi
+            for ((_mi=START_RUN; _mi<=K; _mi++)); do
+                [[ -f "${RUN_BASE}/run_${_mi}/output.report.json" ]] || _mr=$((_mr+1))
+            done
+            [[ "$_mr" -gt 0 ]] && log "harbor: WARN ${_mr} of runs ${START_RUN}..${K} lack output.report.json (partial eval evidence; those runs will carry no_signal)"
+        else
+            log "harbor: skip (no output.report.json under $RUN_BASE; eval produced no evidence)"
+        fi
+    fi
+
     # ── Harbor export (mirrors run_custom_eval.sh tail) ──────────────────────
     # Convert this dataset's trajectories into harbor format. Each dataset gets
     # its own <tag>_harbor/ out dir and stages its dataset record as
     # <instance_id>.jsonl, so concurrent subshells never collide. We pass
     # --instance "$DATASET_TAG" so the converter only walks THIS dataset's dir
     # under the shared OUTPUT_BASE (and skips _parallel_logs / other bundles).
-    if [[ "$DOCKER_BUILD_ONLY" == false ]]; then
+    if [[ "$PUBLISH_TAIL" == true ]]; then
         local HAVE_OUTPUT
         HAVE_OUTPUT=$(find "$RUN_BASE" -name output.jsonl -not -path "*/eval_files/*" 2>/dev/null | head -1 || true)
         if [[ -n "$HAVE_OUTPUT" ]]; then
@@ -1519,8 +1546,10 @@ print(proxy)
         fi
     fi
 
-    stage_dataset "$DATASET_TAG" "${DS_ORG}__${DS_REPO}-${DS_NUMBER}" "$DATASET" \
-        "$RUN_BASE" "${OUTPUT_BASE}/${DATASET_TAG}/${DATASET_TAG}_harbor" "$MODEL_SLUG" "$DS_UUID"
+    if [[ "$PUBLISH_TAIL" == true ]]; then
+        stage_dataset "$DATASET_TAG" "${DS_ORG}__${DS_REPO}-${DS_NUMBER}" "$DATASET" \
+            "$RUN_BASE" "${OUTPUT_BASE}/${DATASET_TAG}/${DATASET_TAG}_harbor" "$MODEL_SLUG" "$DS_UUID"
+    fi
 
     log "done status=$status ${res:+result=$res}"
     echo "${TAG_NAME}|${status}|${res}" >> "$RESULTS_FILE"

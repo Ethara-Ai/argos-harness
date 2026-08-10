@@ -1429,41 +1429,57 @@ print(f\"  Resolved: {r.get('resolved_instances',0)}/{r.get('total_instances',0)
     fi
 fi
 
-: "${HARBOR_OUT:=${OUTPUT_BASE}/${DATASET_TAG}/${DATASET_TAG}_harbor}"
-INSTANCE_ID="${DS_ORG}__${DS_REPO}-${DS_NUMBER}"
-HARBOR_DATASET_STAGE="${HARBOR_OUT}/_dataset"
-: "${HARBOR_DATASET_DIR:=$HARBOR_DATASET_STAGE}"
-log ""
-log "═══════════════════════════════════════════════════════════════"
-log "  Converting trajectories to harbor export format..."
-log "  Output  : $HARBOR_OUT"
-log "  Instance: $DATASET_TAG (id: $INSTANCE_ID)"
-log "═══════════════════════════════════════════════════════════════"
-mkdir -p "$HARBOR_OUT" "$HARBOR_DATASET_STAGE"
-cp -f "$DATASET" "${HARBOR_DATASET_STAGE}/${INSTANCE_ID}.jsonl"
-
-HARBOR_CONVERT_ARGS=(
-    "$OUTPUT_BASE"
-    --out "$HARBOR_OUT"
-    --dataset-dir "$HARBOR_DATASET_DIR"
-    --instance "$DATASET_TAG"
-    --task-uuid "$DS_UUID"
-)
-
-if command -v multiswebench-harbor-convert >/dev/null 2>&1; then
-    multiswebench-harbor-convert "${HARBOR_CONVERT_ARGS[@]}"
-    HARBOR_RC=$?
+# ── Publish gate for the export tail (harbor → staging) ─────────────────────
+# Only export when this invocation can publish verifiable results: never on
+# --skip-eval (trajectory-only pass: converting now would bake no_signal
+# scores into result.json), and otherwise only when eval evidence exists
+# (at least one run_<i>/output.report.json under RUN_BASE).
+PUBLISH_TAIL=false
+if [[ "$SKIP_EVAL" == true ]]; then
+    log "harbor: skip (--skip-eval: trajectory-only invocation, no eval evidence to export)"
+elif [[ -z "$(find "$RUN_BASE" -name output.report.json -not -path "*/eval_files/*" 2>/dev/null | head -1 || true)" ]]; then
+    log "harbor: skip (no output.report.json under $RUN_BASE; eval produced no evidence)"
 else
-    uv run python -m benchmarks.multiswebench.scripts.harbor.converter "${HARBOR_CONVERT_ARGS[@]}"
-    HARBOR_RC=$?
-fi
-if [[ $HARBOR_RC -ne 0 ]]; then
-    log "ERROR: harbor conversion failed (exit $HARBOR_RC)"
-    exit $HARBOR_RC
+    PUBLISH_TAIL=true
 fi
 
-stage_dataset "$DATASET_TAG" "${DS_ORG}__${DS_REPO}-${DS_NUMBER}" "$DATASET" \
-    "$RUN_BASE" "$HARBOR_OUT" "$MODEL_SLUG" "$DS_UUID"
+if [[ "$PUBLISH_TAIL" == true ]]; then
+    : "${HARBOR_OUT:=${OUTPUT_BASE}/${DATASET_TAG}/${DATASET_TAG}_harbor}"
+    INSTANCE_ID="${DS_ORG}__${DS_REPO}-${DS_NUMBER}"
+    HARBOR_DATASET_STAGE="${HARBOR_OUT}/_dataset"
+    : "${HARBOR_DATASET_DIR:=$HARBOR_DATASET_STAGE}"
+    log ""
+    log "═══════════════════════════════════════════════════════════════"
+    log "  Converting trajectories to harbor export format..."
+    log "  Output  : $HARBOR_OUT"
+    log "  Instance: $DATASET_TAG (id: $INSTANCE_ID)"
+    log "═══════════════════════════════════════════════════════════════"
+    mkdir -p "$HARBOR_OUT" "$HARBOR_DATASET_STAGE"
+    cp -f "$DATASET" "${HARBOR_DATASET_STAGE}/${INSTANCE_ID}.jsonl"
+
+    HARBOR_CONVERT_ARGS=(
+        "$OUTPUT_BASE"
+        --out "$HARBOR_OUT"
+        --dataset-dir "$HARBOR_DATASET_DIR"
+        --instance "$DATASET_TAG"
+        --task-uuid "$DS_UUID"
+    )
+
+    if command -v multiswebench-harbor-convert >/dev/null 2>&1; then
+        multiswebench-harbor-convert "${HARBOR_CONVERT_ARGS[@]}"
+        HARBOR_RC=$?
+    else
+        uv run python -m benchmarks.multiswebench.scripts.harbor.converter "${HARBOR_CONVERT_ARGS[@]}"
+        HARBOR_RC=$?
+    fi
+    if [[ $HARBOR_RC -ne 0 ]]; then
+        log "ERROR: harbor conversion failed (exit $HARBOR_RC)"
+        exit $HARBOR_RC
+    fi
+
+    stage_dataset "$DATASET_TAG" "${DS_ORG}__${DS_REPO}-${DS_NUMBER}" "$DATASET" \
+        "$RUN_BASE" "$HARBOR_OUT" "$MODEL_SLUG" "$DS_UUID"
+fi
 
 # ── Final push of the per-dataset commit ────────────────────────────────────
 if [[ "$NO_PUSH" == true ]]; then
