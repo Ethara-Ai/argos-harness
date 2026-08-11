@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1.6
+
+FROM golang:1.26-bookworm
+
+ARG TARGETARCH
+ARG REPO_URL="https://github.com/dapr/dapr.git"
+ARG BASE_COMMIT
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    TZ=UTC
+
+LABEL org.opencontainers.image.title="dapr/dapr" \
+      org.opencontainers.image.description="dapr/dapr Docker image" \
+      org.opencontainers.image.source="https://github.com/dapr/dapr" \
+      org.opencontainers.image.authors="https://www.ethara.ai/"
+
+WORKDIR /home/
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    build-essential \
+    git \
+    gnupg \
+    make \
+    python3 \
+    sudo \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CGO_ENABLED=0
+ENV GOTOOLCHAIN=local
+ENV GOFLAGS="-buildvcs=false -mod=mod"
+
+RUN git clone https://github.com/dapr/dapr.git /home/dapr && cd /home/dapr && git fetch origin '+refs/pull/*/head:refs/pull/*/head'
+
+CMD ["/bin/bash"]

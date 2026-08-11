@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1.6
+
+FROM golang:1.17
+
+ARG TARGETARCH
+ARG REPO_URL="https://github.com/XTLS/Xray-core.git"
+ARG BASE_COMMIT
+
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    TZ=UTC
+
+LABEL org.opencontainers.image.title="XTLS/Xray-core" \
+      org.opencontainers.image.description="XTLS/Xray-core Docker image" \
+      org.opencontainers.image.source="https://github.com/XTLS/Xray-core" \
+      org.opencontainers.image.authors="https://www.ethara.ai/"
+
+
+WORKDIR /home/
+
+RUN { apt-get update 2>/dev/null || { sed -i 's|deb.debian.org/debian|archive.debian.org/debian|g' /etc/apt/sources.list && sed -i 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list && sed -i '/-updates/d' /etc/apt/sources.list && apt-get update; }; } && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    build-essential \
+    git \
+    gnupg \
+    make \
+    python3 \
+    sudo \
+    wget \
+    patch \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV GOTOOLCHAIN=local
+
+CMD ["/bin/bash"]

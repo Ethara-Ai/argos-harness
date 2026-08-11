@@ -36,6 +36,8 @@ The rubric layer adds the **process channel**, in the exact delivery format of t
 
 Structural equality with the reference corpus is enforced by `tests/test_bundle_structure.py`: identical file set, identical JSON key sets/order (rubrics.json, process.json, result.json writeback), identical enums, verdict-line key order, `final_score.md` template, `score.md` format.
 
+**Dockerfile exception (TL directive 2026-08-11):** `environment/Dockerfile` ships the **input task-folder Dockerfile** verbatim (committed under `benchmarks/multiswebench/scripts/harbor/env_dockerfiles/`, per-PR map for multi-Dockerfile repos) instead of the corpus-style template render; the template remains the fallback for repos with no entry. Rationale, accepted risks and revert switches: `env_dockerfiles/DOCKERFILE_SWAP.md`.
+
 ## 3. The pipeline (all automatic, wired into `run_eval.sh`)
 
 With `RUBRIC_ENABLE=1`, after harbor conversion each task flows through:

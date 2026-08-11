@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import shutil
@@ -18,6 +19,11 @@ from benchmarks.multiswebench.scripts.eval.score_v2g import compute_score_v2g
 
 
 TEMPLATE_DIR = Path(__file__).parent / "task-template"
+# Input task-folder Dockerfiles shipped verbatim as each bundle's
+# environment/Dockerfile (TL directive 2026-08-11). The task-template render
+# below remains the live fallback for repos with no entry here.
+# See env_dockerfiles/DOCKERFILE_SWAP.md for rationale + revert steps.
+ENV_DOCKERFILES_DIR = Path(__file__).parent / "env_dockerfiles"
 DEFAULT_ECR_PREFIX = (
     "426628337772.dkr.ecr.ap-south-1.amazonaws.com/rfp-coding-q1-tag-milo"
 )
@@ -338,6 +344,8 @@ def derive_cost_from_tokens(
     reconstructs it, applying the cache-read discount. Returns None when the
     model has no known pricing.
     """
+    import litellm  # lazy: heavy import, only needed on the zero-cost path
+
     rates: dict[str, Any] | None = None
     candidates = [model]
     if "/" in model:
@@ -1055,6 +1063,61 @@ def inject_dockerfile_language_patches(dockerfile_text: str, language: str) -> s
     return dockerfile_text
 
 
+def resolve_env_dockerfile(org: str, repo_name: str, pr_number: int) -> Path | None:
+    """Locate the input task-folder Dockerfile for this instance, if any.
+
+    Returns the path to the file to ship verbatim as environment/Dockerfile,
+    or None to fall back to the task-template render (TL directive 2026-08-11;
+    see env_dockerfiles/DOCKERFILE_SWAP.md). Resolution:
+
+    - ``ENV_DOCKERFILE_SOURCE=template`` env var -> None (instant revert switch);
+    - no ``env_dockerfiles/{org}_m_{repo}`` dir -> None;
+    - exactly one ``Dockerfile*`` file -> that file (every PR);
+    - multiple files -> ``map.json`` must map ``str(pr_number)`` to a filename;
+      a missing map, missing key or dangling filename -> loud WARN + None.
+    """
+    if os.environ.get("ENV_DOCKERFILE_SOURCE", "").strip().lower() == "template":
+        print(
+            f"env-dockerfile: ENV_DOCKERFILE_SOURCE=template set; forcing "
+            f"task-template render for {org}/{repo_name} pr-{pr_number}"
+        )
+        return None
+    repo_dir = ENV_DOCKERFILES_DIR / f"{org}_m_{repo_name}".lower()
+    if not repo_dir.is_dir():
+        return None
+    candidates = sorted(
+        p for p in repo_dir.iterdir() if p.is_file() and p.name.startswith("Dockerfile")
+    )
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    map_path = repo_dir / "map.json"
+    if not map_path.is_file():
+        print(
+            f"env-dockerfile: WARN {repo_dir.name} has {len(candidates)} "
+            f"Dockerfiles but no map.json; falling back to task-template for "
+            f"pr-{pr_number}"
+        )
+        return None
+    mapping = json.loads(map_path.read_text(encoding="utf-8"))
+    filename = mapping.get(str(pr_number))
+    if not filename:
+        print(
+            f"env-dockerfile: WARN no map.json entry for pr-{pr_number} in "
+            f"{repo_dir.name}; falling back to task-template"
+        )
+        return None
+    chosen = repo_dir / filename
+    if not chosen.is_file():
+        print(
+            f"env-dockerfile: WARN map.json maps pr-{pr_number} to missing "
+            f"file {filename!r} in {repo_dir.name}; falling back to task-template"
+        )
+        return None
+    return chosen
+
+
 def build_task(
     instance_id: str,
     record: dict[str, Any],
@@ -1141,12 +1204,29 @@ def build_task(
     )
     (task_dir / "task.toml").write_text(task_toml_text, encoding="utf-8")
 
-    dockerfile_text = render_literal(
-        read_text(TEMPLATE_DIR / "environment" / "Dockerfile"),
-        base_image=base_image,
-        repo_name=repo_name,
-    )
-    dockerfile_text = inject_dockerfile_language_patches(dockerfile_text, language)
+    # TL directive 2026-08-11: ship the input task-folder Dockerfile verbatim
+    # when one is committed under env_dockerfiles/ (no placeholder render, no
+    # language patches). The template render below stays as the fallback.
+    # Rationale + accepted risks + revert: env_dockerfiles/DOCKERFILE_SWAP.md.
+    env_dockerfile = resolve_env_dockerfile(org, repo_name, pr_number)
+    if env_dockerfile is not None:
+        print(
+            f"env-dockerfile: using input Dockerfile "
+            f"{env_dockerfile.parent.name}/{env_dockerfile.name} for "
+            f"{org}/{repo_name} pr-{pr_number}"
+        )
+        dockerfile_text = read_text(env_dockerfile)
+    else:
+        print(
+            f"env-dockerfile: WARN no input Dockerfile for {org}/{repo_name} "
+            f"pr-{pr_number}; falling back to task-template render"
+        )
+        dockerfile_text = render_literal(
+            read_text(TEMPLATE_DIR / "environment" / "Dockerfile"),
+            base_image=base_image,
+            repo_name=repo_name,
+        )
+        dockerfile_text = inject_dockerfile_language_patches(dockerfile_text, language)
     (task_dir / "environment" / "Dockerfile").write_text(
         dockerfile_text, encoding="utf-8"
     )
