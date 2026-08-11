@@ -799,9 +799,13 @@ _ISSUE_RE = re.compile(r"^##+\s*(?:Issue\s*\d+[:.]?\s*)?(.+)$", re.M)
 def _is_hand_authored(rubric_path: Path) -> bool:
     """True for a rubric this generator did not write.
 
-    --force exists to refresh derived artifacts, and the generator stamps what
-    it produces. Anything unstamped was written by hand, so overwriting it
-    destroys judgment prose no patch can reproduce.
+    --force exists to refresh derived artifacts; overwriting a hand-written
+    rubric destroys judgment prose no patch can reproduce. Pre-3-key rubrics
+    carry the generator's stamp in the file itself. The 3-key format carries
+    no stamp, so the signal moves to TRUTH.md's Provenance block: the
+    generator writes ``authored_by: generated`` there and certify never
+    rewrites that line. Hand-authors of 3-key bundles must set
+    ``authored_by: <name>`` in Provenance to keep this protection.
     """
     if not rubric_path.is_file():
         return False
@@ -809,7 +813,19 @@ def _is_hand_authored(rubric_path: Path) -> bool:
         doc = json.loads(rubric_path.read_text(encoding="utf-8"))
     except ValueError:
         return True
-    return doc.get("authored_by") != AUTHOR_STAMP
+    if "authored_by" in doc:  # pre-3-key rubric: the stamp lives in the file
+        return doc.get("authored_by") != AUTHOR_STAMP
+    truth_path = rubric_path.parent.parent / "TRUTH.md"
+    if not truth_path.is_file():
+        return False
+    try:
+        stamp = str(
+            Truth.load(truth_path, spec_path=rubric_path).provenance.get("authored_by")
+            or ""
+        )
+    except Exception:
+        return True  # unreadable provenance: protect, same as unreadable JSON
+    return bool(stamp) and stamp not in ("generated", AUTHOR_STAMP)
 
 
 BUILD_STEPS = ("author", "emit-tests", "certify", "validate")
@@ -945,8 +961,6 @@ def cmd_author(args) -> int:
     task.truth_path.write_text(written, encoding="utf-8")
     rubric = json.loads(
         generate_rubric(
-            uuid=task.uuid,
-            instance_id=task.instance_id,
             sites=spec_sites,
             test_paths=test_paths,
             target_ids=targets,

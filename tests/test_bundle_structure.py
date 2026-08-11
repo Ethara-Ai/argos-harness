@@ -54,10 +54,9 @@ def test_file_set_matches_corpus():
 def test_rubrics_json_structure():
     ours = json.loads((OURS / "tests" / "rubrics.json").read_text())
     ref = json.loads((REF / "tests" / "rubrics.json").read_text())
-    assert list(ours) == list(ref)  # top-level key order
-    assert ours["schema_version"] == ref["schema_version"] == "1.0"
-    assert ours["authored_by"] == ref["authored_by"] == "assay author"
-    assert ours["description"] == ref["description"]
+    # Headerless delivery format: our bundles intentionally drop the corpus's
+    # five header keys; item/checks/sites internals stay corpus-identical.
+    assert list(ours) == ["items", "checks", "sites"]
 
     def item_keys(item):
         return tuple(item)

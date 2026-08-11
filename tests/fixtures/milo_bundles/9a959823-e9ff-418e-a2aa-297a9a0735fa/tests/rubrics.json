@@ -1,9 +1,4 @@
 {
-  "schema_version": "1.0",
-  "authored_by": "assay author",
-  "task_uuid": "9a959823-e9ff-418e-a2aa-297a9a0735fa",
-  "instance_id": "tortoise__tortoise-orm-538",
-  "description": "The full item set that grades a run of this task. The issue_coverage and scope_discipline items are derived from this task's ground truth; the honesty, verification, adherence and maintainability items are copies of assay/preamble.json, which stays the source of truth for their wording.",
   "items": [
     {
       "id": "R1",

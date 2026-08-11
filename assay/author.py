@@ -568,8 +568,6 @@ def issue_items(
 
 def generate_rubric(
     *,
-    uuid: str,
-    instance_id: str,
     sites: list[Site],
     test_paths: list[str],
     target_ids: list[str],
@@ -620,25 +618,11 @@ def generate_rubric(
             "evidence": ["final_diff"],
         }
     )
-    return (
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "authored_by": AUTHOR_STAMP,
-                "task_uuid": uuid,
-                "instance_id": instance_id,
-                "description": "The full item set that grades a run of this task. The "
-                "issue_coverage and scope_discipline items are derived "
-                "from this task's ground truth; the honesty, "
-                "verification, adherence and maintainability items are "
-                "copies of assay/preamble.json, which stays the source "
-                "of truth for their wording.",
-                "items": items,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
+    # Headerless delivery format (3 keys: items, checks, sites): the file
+    # carries only what grades a run. The generated/hand-authored distinction
+    # the old authored_by header encoded now lives in TRUTH.md's Provenance
+    # block -- see _is_hand_authored in cli.py.
+    return json.dumps({"items": items}, indent=2) + "\n"
 
 
 def shared_items() -> list[dict]:
