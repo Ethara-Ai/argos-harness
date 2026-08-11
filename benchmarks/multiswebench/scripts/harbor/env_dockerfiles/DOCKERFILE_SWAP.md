@@ -1,6 +1,6 @@
 # DOCKERFILE_SWAP — bundle `environment/Dockerfile` now ships the input task-folder Dockerfile
 
-*Directive: TL, 2026-08-11 (relayed and confirmed by Anzar). Implemented 2026-08-11.*
+*Directive: TL, 2026-08-11 (relayed and confirmed by Anzar). Implemented 2026-08-11, commit `e512241`.*
 
 ## What changed
 
