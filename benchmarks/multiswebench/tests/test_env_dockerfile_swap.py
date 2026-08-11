@@ -3,7 +3,7 @@
 The bundle's environment/Dockerfile ships the input task-folder Dockerfile
 verbatim when one is committed under scripts/harbor/env_dockerfiles/; the
 task-template render remains the live fallback. Full rationale + revert:
-scripts/harbor/env_dockerfiles/DOCKERFILE_SWAP.md.
+CHANGE_LOG/DOCKERFILE_SWAP.md (repo root).
 """
 
 from __future__ import annotations

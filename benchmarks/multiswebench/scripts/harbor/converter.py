@@ -22,7 +22,7 @@ TEMPLATE_DIR = Path(__file__).parent / "task-template"
 # Input task-folder Dockerfiles shipped verbatim as each bundle's
 # environment/Dockerfile (TL directive 2026-08-11). The task-template render
 # below remains the live fallback for repos with no entry here.
-# See env_dockerfiles/DOCKERFILE_SWAP.md for rationale + revert steps.
+# See CHANGE_LOG/DOCKERFILE_SWAP.md (repo root) for rationale + revert steps.
 ENV_DOCKERFILES_DIR = Path(__file__).parent / "env_dockerfiles"
 DEFAULT_ECR_PREFIX = (
     "426628337772.dkr.ecr.ap-south-1.amazonaws.com/rfp-coding-q1-tag-milo"
@@ -1068,7 +1068,7 @@ def resolve_env_dockerfile(org: str, repo_name: str, pr_number: int) -> Path | N
 
     Returns the path to the file to ship verbatim as environment/Dockerfile,
     or None to fall back to the task-template render (TL directive 2026-08-11;
-    see env_dockerfiles/DOCKERFILE_SWAP.md). Resolution:
+    see CHANGE_LOG/DOCKERFILE_SWAP.md at repo root). Resolution:
 
     - ``ENV_DOCKERFILE_SOURCE=template`` env var -> None (instant revert switch);
     - no ``env_dockerfiles/{org}_m_{repo}`` dir -> None;
@@ -1207,7 +1207,7 @@ def build_task(
     # TL directive 2026-08-11: ship the input task-folder Dockerfile verbatim
     # when one is committed under env_dockerfiles/ (no placeholder render, no
     # language patches). The template render below stays as the fallback.
-    # Rationale + accepted risks + revert: env_dockerfiles/DOCKERFILE_SWAP.md.
+    # Rationale + accepted risks + revert: CHANGE_LOG/DOCKERFILE_SWAP.md.
     env_dockerfile = resolve_env_dockerfile(org, repo_name, pr_number)
     if env_dockerfile is not None:
         print(

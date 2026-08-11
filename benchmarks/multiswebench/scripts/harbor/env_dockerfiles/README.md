@@ -4,7 +4,7 @@ Per TL directive (2026-08-11), the harbor converter ships the **input task-folde
 Dockerfile** as each bundle's `environment/Dockerfile` instead of rendering the
 `task-template/environment/Dockerfile` template. The template remains the live
 fallback for repos with no entry here. Full rationale, accepted risks and revert
-steps: [DOCKERFILE_SWAP.md](DOCKERFILE_SWAP.md).
+steps: [CHANGE_LOG/DOCKERFILE_SWAP.md](../../../../../CHANGE_LOG/DOCKERFILE_SWAP.md).
 
 ## Layout convention
 
