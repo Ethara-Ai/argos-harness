@@ -20,7 +20,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import spec
-from .agreement import pooled_kappa
 from .author import (
     AUTHOR_STAMP,
     announced_issues,
@@ -34,8 +33,8 @@ from .author import (
 from .bundle import RunBundle, TaskBundle
 from .certify import certify, certify_from_record, docker_round, write_provenance
 from .compose import (
+    RUBRIC_WEIGHT,
     alpha_for_task,
-    channel_weight,
     eval_score,
     process_score,
     rl_score,
@@ -268,11 +267,10 @@ def _score_md(r) -> str:
     if r.is_judged:
         rub = f"{r.rubric.score:.4f}"
         proc = f"{r.process_score:.4f}"
-        members = sorted(r.rubric.judge_members)
-        judges = f"n={len(members)} ({', '.join(members)})"
+        judge = "+".join(sorted(r.rubric.judge_members))
     else:
         rub = proc = "—"
-        judges = "unjudged"
+        judge = "unjudged"
     gate = (
         "VOID — " + ", ".join(c.id for c in r.deterministic.hard_failures)
         if r.deterministic.voided
@@ -289,13 +287,12 @@ def _score_md(r) -> str:
     ev = comp.get("score_eval", r.blended_score if r.is_judged else None)
     rl = comp.get("score_rl")
     fmt = lambda v: f"{v:.4f}" if isinstance(v, (int, float)) else "—"
-    kappa = comp.get("kappa")
     return (
         f"# Score — {r.model}/{r.run_id}\n\n"
         f"Task: {r.instance_id} (`{r.task_uuid}`)  \n"
         f"Status: {r.outcome_status}  \n"
         f"Gate: {gate}  \n"
-        f"Judges: {judges}" + (f", κ={kappa:g}" if kappa is not None else "") + "  \n\n"
+        f"Judge: {judge}  \n\n"
         f"| channel | score |\n|---|--:|\n"
         f"| outcome | {r.outcome_score if r.outcome_score is not None else '—'} |\n"
         f"| deterministic (soft) | {det} |\n"
@@ -329,17 +326,13 @@ def _compose_group(reports, n_targets: int = 0) -> None:
         return
     outcomes = [r.outcome_score for r in scored]
     alpha = alpha_for_task(n_targets)
-    # One weight for the whole task. Judges are chosen per subject, so most runs
-    # meet a single judge and their own kappa is undefined - taking that at face
-    # value sets the judge channel's weight to zero and silently scores those
-    # runs on the deterministic channel alone. The runs two judges scored measure
-    # the same rubric, so they are what the weight is estimated from.
-    kappa = pooled_kappa([r.judge_observations for r in scored])
+    # One fixed rubric weight for every run (change spec "remove kappa, keep
+    # alpha"): the reward runs on a single judge, so there is no inter-judge
+    # agreement to derive a weight from.
     procs = {
         id(r): process_score(
             det=r.deterministic.soft_score,
             rubric=(r.rubric.score if r.rubric else None),
-            kappa=kappa,
         )
         for r in scored
     }
@@ -352,9 +345,7 @@ def _compose_group(reports, n_targets: int = 0) -> None:
         r.composition = {
             "alpha": round(alpha, 6),
             "min_outcome_gap": round(_min_gap(outcomes), 6),
-            "kappa": kappa,
-            "kappa_scope": "task_pooled",
-            "rubric_weight": round(channel_weight(kappa), 4),
+            "rubric_weight": RUBRIC_WEIGHT,
             "process": round(procs[id(r)], 4),
             "process_stratified": round(stratify(procs[id(r)], stratum), 4),
             "stratum_size": len(stratum),
@@ -363,7 +354,6 @@ def _compose_group(reports, n_targets: int = 0) -> None:
                     outcome=r.outcome_score,
                     det=r.deterministic.soft_score,
                     rubric=(r.rubric.score if r.rubric else None),
-                    kappa=kappa,
                     alpha=alpha,
                     gate=r.process_gate,
                 ),
@@ -374,7 +364,6 @@ def _compose_group(reports, n_targets: int = 0) -> None:
                     outcome=r.outcome_score,
                     det=r.deterministic.soft_score,
                     rubric=(r.rubric.score if r.rubric else None),
-                    kappa=kappa,
                     alpha=alpha,
                     gate=r.process_gate,
                     stratum_processes=stratum,
