@@ -64,6 +64,34 @@ images rather than hand-written ranges. (Pinned in
    already dead wiring (`--msb-ref` parsed but unused); moot on the input path,
    still cosmetically wrong on the fallback path.
 
+## Live verification log (2026-08-11 evening, dapr batch on Anzar's Mac)
+
+Batch launched ~18:49 (`dataset/dapr__dapr_41pr_combined_final.jsonl`, 41 instances,
+sequential). Verified on real bundles as they landed:
+
+| Instance | Bundle | What it proved |
+|---|---|---|
+| #1 pr-1351 (`edd779ae…`) | trajectory REUSED, bundle re-exported 18:50 | Dockerfile swap ✓ (`cmp` identical to `Dockerfile.base`); judge block ✓ (`judge{model: sonnet-5}`, `rubric_weight 1.0`, no kappa). rubrics.json still had the 5 old header keys (task was authored pre-`4ba0172`) → **manually stripped to `{items, checks, sites}` in both `milo_bundles/` and the staged publish-clone copy** (content byte-identical per the 4ba0172 commit; verdicts stay valid; `"mode": "judged"` guard still matches — 3 hits; 10 items / 28 checks / 8 sites intact). |
+| #2 pr-1638 (`6816e922…`) | trajectory reused, eval 19:00, **freshly authored** 19:00–19:08 | ALL THREE format changes natively correct: headerless rubrics ✓, judge block ✓, Dockerfile ✓. Proves fresh authoring post-`4ba0172` needs no sweep — 1351 was the only pre-change-authored bundle. |
+| #3 (first FRESH trajectory) | pending at time of writing | Remaining checks: `reasoning_content` present in `run_1/output.jsonl` (thinking capture) + non-zero cost in `result.json` (`derive_cost_from_tokens` fix in `e512241`). |
+
+Outcome results 0/1 on #1/#2 — normal (outcome channel is sparse; process channel is the signal).
+
+## Pending / follow-ups (state as of 2026-08-11 ~19:15)
+
+- ☐ **Push**: 6 local commits unpushed — `e512241`, `1f7393d`, `4ba0172`, `7514c58`,
+  `613b6bc` (this file's move to CHANGE_LOG/), `2aa0084` (PRE_RUN_CHECKLIST). Anzar pushes
+  (work-account credential). Server/QL picks up nothing until then.
+- ☐ **TL confirmation** of the XTLS map table above (draft message already given to Anzar;
+  low-stakes formality — affects only which env Dockerfile ships per bundle).
+- ☐ **Instance #3 trajectory checks** (thinking + cost) when it completes.
+- ☐ **XTLS batch** (`dataset/finalXTLS_shippable.jsonl`, copied+checksummed 2026-08-11):
+  run AFTER dapr finishes, NOT in parallel (16GB M1: Docker OOM risk + doubled subscription
+  burn). Same command with the XTLS dataset; `--lang go`. Dataset pre-verified: 38 records,
+  all uuids present, zero empty `test_patch_result`, all `number_interval`s match the
+  evaluator registry byte-for-byte.
+- Full pre-run checklist: `CHANGE_LOG/PRE_RUN_CHECKLIST.md`.
+
 ## Operational notes
 
 - Existing bundles (e.g. dapr-1351 `edd779ae…`) are **not regenerated** — the
