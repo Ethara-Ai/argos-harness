@@ -1,3 +1,28 @@
+# Reward Change Log — REVERTED 2026-08-13 (original change record below)
+
+**TL directive 2026-08-13 (relayed and confirmed by Anzar): full revert of
+7514c58.** The composition is back to the corpus scorer's kappa-based form
+(revert commit `0dc59e7`; `git log --grep="remove kappa"` finds both directions).
+
+- `assay/` tree, both pilot fixtures, `test_assay_replay.py` (byte-identical
+  corpus replay restored) and `test_bundle_structure.py` are **byte-identical
+  to their pre-7514c58 state** (verified with `git diff` against `7514c58^`).
+  `assay/agreement.py` (Cohen's kappa) is back; `test_assay_compose.py` and
+  `SCORE_MATH.md` (both introduced by the reverted commit) are gone.
+- **Known, accepted consequence** (explicitly acknowledged before reverting):
+  with a single judge, kappa is undefined and `channel_weight(None) → 0.0` —
+  single-judge runs score the process channel on the 28 deterministic checks
+  alone; the judge still runs and its verdicts are recorded, but they carry
+  zero weight in the composed score. This restores corpus-format parity
+  (`council` block, kappa fields in process.json/result.json).
+- **All trajectories will be regenerated from scratch** under this scoring;
+  the 2026-08-11→12 outputs (41-instance dapr batch, 31 scored bundles) were
+  discarded — nothing delivered mixes the two formats.
+
+Everything below is the ORIGINAL 2026-08-11 change record, kept as history.
+
+---
+
 # Reward Change Log — remove kappa, keep alpha (single-judge composition)
 
 **Date:** 2026-08-11 · **Spec:** TL doc "Aurora Reward — Change Spec: Remove Kappa, Keep Alpha" · **Chosen weight:** `w = 1.0` (spec's recommended default; deterministic channel kept)

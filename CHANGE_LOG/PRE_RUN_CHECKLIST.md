@@ -73,9 +73,9 @@ Inspect `milo_bundles/<uuid>/` of the first finished instance:
 |---|---|---|
 | ☐ `environment/Dockerfile` | **template render** (two-stage: python-fetch + `FROM <per-PR ECR image>` + repo name) — the swap was REVERTED 2026-08-13; input-file Dockerfiles appear ONLY in the 31 pre-revert dapr bundles (accepted mixed state) | revert of `e512241` |
 | ☐ `tests/rubrics.json` | top-level keys exactly `{items, checks, sites}` — **no** schema_version/authored_by/task_uuid header | `4ba0172` |
-| ☐ `verifier/process.json` | `judge: {model: claude-sonnet-5}` block (NOT `council`); `composition.rubric_weight: 1.0`; **no kappa anywhere** | `7514c58` |
-| ☐ `verifier/final_score.md` | `Judge: claude-sonnet-5` line; process = (det + rubric)/2 | `7514c58` |
-| ☐ `result.json` assay block | keys `{alpha, rubric_weight, gate, stratum_size, judge, status}` | `7514c58` |
+| ☐ `verifier/process.json` | **`council` block** (n_judges/members/kappa…) + `composition` has `kappa`/`kappa_scope` — the single-judge change was REVERTED 2026-08-13; single-judge process = deterministic checks only (judge verdicts recorded, zero-weighted — known/accepted) | revert of `7514c58` |
+| ☐ `verifier/final_score.md` | `Judges: n=1 (sonnet-5), κ=…` header; kappa-weighted formula row | revert of `7514c58` |
+| ☐ `result.json` assay block | keys `{alpha, kappa, rubric_weight, gate, stratum_size, council, status}` | revert of `7514c58` |
 | ☐ `trajectories/<alias>/run_1/` | alias form (`opus-4.8`), `agent/trajectory.json` present, **thinking/reasoning content non-empty** in the raw output.jsonl | force_adaptive_thinking |
 | ☐ result.json `n_episodes` vs `max_turns` | max_turns = 1000; run well under ceiling (B4 gate open unless genuinely cut off) | MAX_ITER default |
 | ☐ result.json cost | **non-zero** even though the bridge bills 0 — `derive_cost_from_tokens` now works (latent NameError fixed in `e512241`) | `e512241` |
@@ -236,3 +236,11 @@ tests deleted, intake commit bddc34b dropped pre-push, litellm crash-fix kept.
 31 pre-revert dapr bundles keep input Dockerfiles (user decision). Details:
 DOCKERFILE_SWAP.md REVERTED chapter. Batch remains stopped at 31/41; resume =
 same command (post-resume exports will render template Dockerfiles).
+
+### 2026-08-13 — kappa-removal (7514c58) REVERTED (TL directive) + old outputs discarded
+Full git revert executed; assay/ + fixtures + replay/structure tests byte-identical
+to pre-7514c58 (verified). Consequence accepted: single-judge process = det checks
+only, judge verdicts zero-weighted; corpus-format parity restored (council/kappa).
+SCORE_MATH.md deleted with the revert. ALL trajectories to be regenerated fresh —
+eval_outputs dapr dirs, milo_bundles, and our staged (untracked) uuid dirs in the
+publish clone wiped per user decision. Details: REWARD_CHANGE_LOG.md REVERTED chapter.
