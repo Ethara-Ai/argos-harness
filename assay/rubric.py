@@ -231,13 +231,22 @@ class RubricReport:
             "clamped": abs(self.raw - self.score) > 1e-9,
             "denominator": self.denominator,
             "counts": c,
+            "judge_members": list(self.judge_members),
+            "contested": [
+                o.item.id
+                for o in self.abstained
+                if o.resolution is Resolution.ABSTAIN_DISAGREEMENT
+            ],
+            "dissent_filtered": [
+                o.item.id for o in self.outcomes if o.dissent_filtered
+            ],
             "items": [
                 {
                     "id": o.item.id,
                     "dimension": o.item.dimension,
                     "weight": o.item.weight,
                     "guardrail": o.item.is_guardrail,
-                    "abstained": o.abstained,
+                    "resolution": o.resolution.value,
                     "satisfied": o.satisfied,
                     "passed": o.passed,
                     "rationale": (o.verdicts[0].rationale[:400] if o.verdicts else ""),

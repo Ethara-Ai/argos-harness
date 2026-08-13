@@ -21,8 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .compose import RUBRIC_WEIGHT
-from .compose import process_score as _fixed_weight_process
+from .agreement import council_agreement
 from .deterministic import DeterministicReport
 from .fingerprint import scorer_stamp
 from .rubric import RubricReport
@@ -30,9 +29,10 @@ from .rubric import RubricReport
 
 # Composition constants, set from evidence rather than taste.
 #
-# The det/rubric split lives in compose.RUBRIC_WEIGHT (fixed, single-judge);
-# this module's fallback blend delegates to compose.process_score so the two
-# paths cannot disagree.
+# W_DETERMINISTIC > 0.5 because B is exact and total while C is k=1 with no
+# measured kappa. Judges flip on 13.6% of identical repeated calls and reach only
+# kappa~0.51 across judges (arXiv:2606.13685), and raw agreement overstates kappa
+# by 33-41pp (arXiv:2606.19544). Equal weighting is not defensible until C earns it.
 #
 # ALPHA sets process's weight in the convex blend to 2*ALPHA, so outcome keeps
 # 1 - 2*ALPHA. HERO (arXiv:2510.07242) confines an inexact channel to 5-20% of the
@@ -59,6 +59,8 @@ from .rubric import RubricReport
 # 0.05 rather than 0.10 stands on HERO's ablation, which puts 0.05 at the optimum
 # for verifiable-heavy training; ours is verifiable-heavy because the outcome
 # channel is execution-based.
+W_DETERMINISTIC = 0.7
+W_RUBRIC = 0.3
 ALPHA = 0.05
 DEFAULT_BETA = ALPHA
 
@@ -109,17 +111,34 @@ class AssayReport:
     composition: dict[str, Any] = field(default_factory=dict)
     """Group-derived score, attached by the CLI once the whole rollout is known."""
 
+    @property
+    def council_kappa(self) -> float | None:
+        return self._council_block().get("kappa")
+
     """Route cost from trajectory.final_metrics: steps, tokens, cost. Recorded, never scored."""
 
-    def _judge_block(self) -> dict[str, Any]:
-        """The single judge that graded this run (change spec: council removed).
+    @property
+    def judge_observations(self) -> dict[str, dict[str, bool]]:
+        # Every verdict received, not the surviving subset: a dissent dropped by
+        # the truncation or citation filter must still count against agreement,
+        # or filtering manufactures the consensus it then reports.
+        if self.rubric is None:
+            return {}
+        return {
+            o.item.id: {v.member: v.satisfied for v in o.verdicts}
+            for o in self.rubric.outcomes
+            if o.verdicts
+        }
 
-        Legacy multi-member verdict stores replay as a joined name so the block
-        keeps one schema; production judging has exactly one member.
-        """
-        if self.rubric is None or not self.rubric.judge_members:
-            return {"model": None}
-        return {"model": "+".join(sorted(self.rubric.judge_members))}
+    def _council_block(self) -> dict[str, Any]:
+        if self.rubric is None:
+            return {"n_judges": 0, "status": "unjudged"}
+        stats = council_agreement(self.judge_observations)
+        members = sorted(self.rubric.judge_members) or stats["members"]
+        stats["members"] = members
+        stats["n_judges"] = len(members)
+        stats["status"] = "council" if len(members) >= 2 else "single_judge"
+        return stats
 
     @property
     def status(self) -> str:
@@ -189,10 +208,10 @@ class AssayReport:
     def process_score(self) -> float:
         """The process score, taken from the composer when one ran.
 
-        Publishing one blend here while composing the scores from another left
-        213 of 247 gate-open runs where the reported process score was not the
-        input to the reported score. The composer wins; the fallback below
-        delegates to the same fixed-weight formula so the two cannot drift.
+        Publishing the legacy fixed blend here while composing the scores from
+        the kappa-weighted one left 213 of 247 gate-open runs where the reported
+        process score was not the input to the reported score. The composer wins
+        because its channel split is the measured agreement rather than a guess.
 
         A run whose outcome is unverifiable still has a measured process score,
         and reporting 0.0 for it made a run that scored 0.62 on process look
@@ -205,19 +224,26 @@ class AssayReport:
             return comp["process"]
         if self.outcome_status != "scored":
             return 0.0
-        return _fixed_weight_process(
-            det=self.deterministic.soft_score, rubric=self.rubric.score
+        return (
+            W_DETERMINISTIC * self.deterministic.soft_score
+            + W_RUBRIC * self.rubric.score
         )
 
     @property
     def channel_weights(self) -> dict[str, float]:
         """The split actually used, so a reader can recompute the process score."""
         comp = self.composition or {}
-        w = comp.get("rubric_weight", RUBRIC_WEIGHT)
+        if "rubric_weight" in comp:
+            w = comp["rubric_weight"]
+            return {
+                "deterministic": 1.0,
+                "rubric": round(w, 4),
+                "normalised_by": 1.0 + w,
+            }
         return {
-            "deterministic": 1.0,
-            "rubric": round(w, 4),
-            "normalised_by": 1.0 + w,
+            "deterministic": W_DETERMINISTIC,
+            "rubric": W_RUBRIC,
+            "normalised_by": 1.0,
         }
 
     @property
@@ -260,7 +286,7 @@ class AssayReport:
         channel split and a fixed alpha. Both then shipped, disagreeing by a few
         thousandths, with no way for a reader to tell which was the reward. The
         composer's value wins because its alpha is derived from this task's own
-        outcome gaps.
+        outcome gaps and its channel split from the measured kappa.
         """
         comp = self.composition or {}
         if comp and blended is not None:
@@ -269,7 +295,7 @@ class AssayReport:
                 "score_rl": round(comp["score_rl"], 4),
                 "authoritative": "composition.score_rl",
                 "formula": "see composition; alpha is task-relative, the channel "
-                "split is the fixed rubric weight",
+                "split is kappa-weighted",
                 "range": [0.0, 1.0],
             }
         return {
@@ -312,9 +338,12 @@ class AssayReport:
                 "rubric_raw": round(self.rubric.raw, 4) if judged else None,
                 "hard_failures": [c.id for c in self.deterministic.hard_failures],
                 "abstained": [c.id for c in self.deterministic.abstentions],
+                "contested_items": (
+                    self.rubric.to_dict()["contested"] if self.rubric else []
+                ),
                 "edit_set_complete": self.deterministic.edit_set_complete,
             },
-            "judge": self._judge_block(),
+            "council": self._council_block(),
             "composition": self.composition,
             "efficiency": {**self.efficiency, "scored": False},
             "rl": self._rl_block(blended),

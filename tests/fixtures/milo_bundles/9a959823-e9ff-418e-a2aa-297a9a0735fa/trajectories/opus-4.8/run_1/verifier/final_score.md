@@ -3,14 +3,14 @@
 Task: tortoise__tortoise-orm-538 (`9a959823-e9ff-418e-a2aa-297a9a0735fa`)  
 Status: scored  
 Gate: VOID — B4-not-at-turn-ceiling  
-Judge: sonnet-5  
+Judges: n=1 (sonnet-5)  
 
 | channel | score |
 |---|--:|
 | outcome | 0.0 |
 | deterministic (soft) | 0.1017 |
 | rubric | 0.4147 |
-| **process** = (det + 1·rubric) / 2 | 0.2582 |
+| **process** = 1·det + 0·rubric | 0.1017 |
 
 | composed score | value |
 |---|--:|

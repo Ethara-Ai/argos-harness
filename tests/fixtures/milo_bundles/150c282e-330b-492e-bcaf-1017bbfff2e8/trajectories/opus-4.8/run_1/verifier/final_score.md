@@ -3,14 +3,14 @@
 Task: tortoise__tortoise-orm-943 (`150c282e-330b-492e-bcaf-1017bbfff2e8`)  
 Status: invalid  
 Gate: VOID — B1-scored-status, B4-not-at-turn-ceiling  
-Judge: sonnet-5  
+Judges: n=1 (sonnet-5)  
 
 | channel | score |
 |---|--:|
 | outcome | 0.0 |
 | deterministic (soft) | 0.1887 |
 | rubric | 0.8779 |
-| **process** = (det + 1·rubric) / 2 | 0.5333 |
+| **process** = 1·det + 0·rubric | 0.1887 |
 
 | composed score | value |
 |---|--:|

@@ -1,16 +1,12 @@
 """THE milo-format acceptance test: replay the reference corpus through the
-vendored assay.
+vendored assay and require byte-equivalent regeneration.
 
 The corpus at milo-bench-samples/ was produced by a newer assay than the copy
-we vendored; six drift patches were applied. Originally this test required
-byte-identical regeneration of every artifact. The single-judge reward change
-("remove kappa, keep alpha") deliberately diverges from the corpus format:
-the council block became judge{model}, the rubric weight is the fixed
-compose.RUBRIC_WEIGHT instead of pooled kappa, and the composed scores moved
-accordingly. So the byte-identity claim is now scoped to the channels the
-change did not touch — outcome, the deterministic checks, and the rubric
-tally — while the composed fields are required to equal a recomputation under
-the new formula from those byte-identical inputs.
+we vendored; six drift patches were applied. This test is what proves them
+right: for each covered bundle we rebuild a verdict store from the corpus's own
+recorded verdicts.jsonl, run `assay score --write` on a copy, and diff every
+process.json (modulo version.scorer — our scorer stamp legitimately differs),
+final_score.md, verdicts.jsonl and result.json against the originals.
 
 Covered cases: scored, voided (C1-no-upstream-content-fetched,
 C3-no-graded-test-write) and unverifiable (B1-scored-status).
@@ -19,7 +15,6 @@ C3-no-graded-test-write) and unverifiable (B1-scored-status).
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -89,166 +84,33 @@ def _replay(uuid: str, tmp_path: Path) -> Path:
     return delivery / uuid
 
 
-# Paths whose values the single-judge change moved (or removed) on purpose.
-# Everything OUTSIDE these subtrees must replay byte-identically.
-CHANGED = re.compile(
-    r"^\.version\.scorer$|"
-    r"^\.judge\b|^\.council\b|"
-    r"^\.process\.(score|weights|contested_items)\b|"
-    r"^\.composition\b|^\.rl\b|"
-    r"^\.detail\.rubric\.(judge_members|contested|dissent_filtered)\b|"
-    r"^\.detail\.rubric\.items\[\d+\]\.(resolution|abstained)$"
-)
-
-
-def _unrounded_channels(new: dict) -> tuple[float, float | None]:
-    """Rebuild det/rubric at full float precision from the detail block.
-
-    process.json stores the channels rounded to 4 dp, but the scorer composes
-    and stratifies the unrounded values; recomputing from the per-check and
-    per-item records is the only way to match it exactly.
-    """
-    from assay.rubric import FLOOR_BAND, dimension_weights
-
-    checks = new["detail"]["deterministic"]["checks"]
-    soft = [c for c in checks if c["gate"] == "soft" and c["verdict"] != "abstain"]
-    denom = sum(c["weight"] for c in soft)
-    det = (
-        sum(c["weight"] for c in soft if c["verdict"] == "pass") / denom
-        if denom
-        else 0.0
-    )
-    rub_detail = new["detail"]["rubric"]
-    if rub_detail is None:
-        return det, None
-    items = rub_detail["items"]
-    eff = dimension_weights(
-        [
-            {"id": i["id"], "dimension": i["dimension"], "weight": i["weight"]}
-            for i in items
-        ]
-    )
-    scored = [i for i in items if not i["abstained"]]
-    rden = sum(eff[i["id"]] for i in scored if eff[i["id"]] > 0)
-    if rden == 0:
-        return det, 0.0
-    raw = sum(eff[i["id"]] for i in scored if i["satisfied"]) / rden
-    rub = (
-        FLOOR_BAND + (1.0 - FLOOR_BAND) * min(1.0, raw)
-        if raw >= 0.0
-        else FLOOR_BAND / (1.0 - raw)
-    )
-    return det, rub
-
-
 @pytest.mark.parametrize("uuid", sorted(BUNDLES), ids=lambda u: u[:8])
-def test_corpus_replay_channels_identical_scores_recomposed(uuid: str, tmp_path: Path):
-    sys.path.insert(0, str(REPO_ROOT))
-    from assay.compose import RUBRIC_WEIGHT, combine, process_score, stratify
-
+def test_corpus_replay_regenerates_identically(uuid: str, tmp_path: Path):
     replayed = _replay(uuid, tmp_path)
     corpus_runs = sorted((CORPUS / uuid / "trajectories").glob("*/run_*"))
     assert len(corpus_runs) == 9
-
-    news = {
-        r: json.loads(
-            (
-                replayed / r.relative_to(CORPUS / uuid) / "verifier" / "process.json"
-            ).read_text()
-        )
-        for r in corpus_runs
-    }
-    exact = {
-        r: process_score(det=det, rubric=rub)
-        for r, (det, rub) in ((r, _unrounded_channels(n)) for r, n in news.items())
-    }
-
     for run_dir in corpus_runs:
         rel = run_dir.relative_to(CORPUS / uuid)
         ours = replayed / rel
-        old = json.loads((run_dir / "verifier" / "process.json").read_text())
-        new = news[run_dir]
 
-        # 1. Unchanged channels replay byte-identically.
-        oldf, newf = _flat(old), _flat(new)
+        old = _flat(json.loads((run_dir / "verifier" / "process.json").read_text()))
+        new = _flat(json.loads((ours / "verifier" / "process.json").read_text()))
         diffs = [
             k
-            for k in set(oldf) | set(newf)
-            if oldf.get(k) != newf.get(k) and not CHANGED.search(k)
+            for k in set(old) | set(new)
+            if old.get(k) != new.get(k) and k != ".version.scorer"
         ]
         assert diffs == [], f"{rel}: {sorted(diffs)[:6]}"
 
-        # 2. The composed fields equal a recomputation under the new formula
-        #    from those byte-identical channel inputs. A run with no outcome
-        #    score never enters the composer (unchanged behavior) — its
-        #    process score reports 0.0 via the report fallback.
-        comp, proc = new["composition"], new["process"]
-        rubric = proc["rubric"]
-        if not comp:
-            assert old["composition"] == {}, rel
-            assert proc["score"] == 0.0, rel
-            _check_schema_and_writeback(run_dir, ours, old, new, rel)
-            continue
-        det_exact, rub_exact = _unrounded_channels(new)
-        assert proc["deterministic"] == round(det_exact, 4), rel
-        assert rubric == (round(rub_exact, 4) if rub_exact is not None else None), rel
-        assert comp["rubric_weight"] == RUBRIC_WEIGHT
-        assert comp["alpha"] == old["composition"]["alpha"]  # alpha untouched
-        expected_process = exact[run_dir]
-        assert proc["score"] == round(expected_process, 4), rel
-        assert comp["process"] == round(expected_process, 4), rel
-        alpha, gate = comp["alpha"], proc["gate"]
-        outcome = new["outcome"]["score"] or 0.0
-        assert comp["score_eval"] == round(
-            combine(outcome=outcome, p=expected_process, alpha=alpha, gate=gate), 4
+        assert (run_dir / "verifier" / "final_score.md").read_text() == (
+            ours / "verifier" / "final_score.md"
+        ).read_text(), rel
+        assert (run_dir / "verifier" / "verdicts.jsonl").read_bytes() == (
+            ours / "verifier" / "verdicts.jsonl"
+        ).read_bytes(), rel
+        assert json.loads((run_dir / "result.json").read_text()) == json.loads(
+            (ours / "result.json").read_text()
         ), rel
-        stratum = [
-            exact[r]
-            for r, n in news.items()
-            if n.get("composition")
-            and abs((n["outcome"]["score"] or 0.0) - outcome) < 1e-9
-        ]
-        assert comp["stratum_size"] == len(stratum), rel
-        strat = stratify(expected_process, stratum)
-        assert comp["process_stratified"] == round(strat, 4), rel
-        assert comp["score_rl"] == round(
-            combine(outcome=outcome, p=strat, alpha=alpha, gate=gate), 4
-        ), rel
-
-        _check_schema_and_writeback(run_dir, ours, old, new, rel)
-
-
-def _check_schema_and_writeback(run_dir: Path, ours: Path, old, new, rel) -> None:
-    # 3. New single-judge schema; the corpus roster carries over.
-    assert list(new["judge"]) == ["model"]
-    assert new["judge"]["model"] == "+".join(old["council"]["members"]), rel
-    assert "kappa" not in json.dumps(new), rel
-
-    # 4. Verdicts pass through untouched; result.json keeps every
-    #    harness-owned field and gains the new assay block.
-    assert (run_dir / "verifier" / "verdicts.jsonl").read_bytes() == (
-        ours / "verifier" / "verdicts.jsonl"
-    ).read_bytes(), rel
-    old_vr = json.loads((run_dir / "result.json").read_text())["verifier_result"]
-    new_vr = json.loads((ours / "result.json").read_text())["verifier_result"]
-    for key in ("score", "score_binary", "score_continuous_v2"):
-        assert new_vr["scores"].get(key) == old_vr["scores"].get(key), (rel, key)
-    for key in ("score_outcome", "score_deterministic", "score_rubric"):
-        if key in old_vr["scores"]:
-            assert new_vr["scores"][key] == old_vr["scores"][key], (rel, key)
-    assert list(new_vr["assay"]) == [
-        "alpha",
-        "rubric_weight",
-        "gate",
-        "stratum_size",
-        "judge",
-        "status",
-    ], rel
-
-    # 5. final_score.md is regenerated in the new template.
-    md = (ours / "verifier" / "final_score.md").read_text()
-    assert "κ" not in md and "Judges:" not in md, rel
-    assert "Judge: " in md, rel
 
 
 def test_bundle_fingerprint_matches_corpus_recordings():
