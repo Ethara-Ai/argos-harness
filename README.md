@@ -120,10 +120,7 @@ After setting up the environment and configuring your LLM, see the individual be
 
 The end-to-end delivery pipeline: dataset file → trajectory (Docker agent) →
 evaluation → harbor conversion → rubric-scored milo bundle. See `RUBRIC.md`
-for the rubric/scoring internals. Bundles ship the input task-folder Dockerfile
-as `environment/Dockerfile` (see
-`benchmarks/multiswebench/scripts/harbor/env_dockerfiles/README.md`); new
-repo batches need their Dockerfile(s) committed there first.
+for the rubric/scoring internals.
 
 ### One-time machine setup
 

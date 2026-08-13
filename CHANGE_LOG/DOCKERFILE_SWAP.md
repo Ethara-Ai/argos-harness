@@ -1,3 +1,37 @@
+# DOCKERFILE_SWAP — REVERTED 2026-08-13 (see chapter below for the original change)
+
+**TL directive 2026-08-13 (relayed and confirmed by Anzar): full removal.**
+Bundles' `environment/Dockerfile` is **template-rendered again** (the original
+behavior: task-template skeleton + repo name + per-PR ECR base image). Removed
+in revert commit `79ba82e`:
+
+- `converter.resolve_env_dockerfile` + `ENV_DOCKERFILES_DIR` + the build_task
+  input branch — build_task restored byte-faithfully from pre-swap history
+  (`git show e512241^`), verified byte-identical against a pre-change golden
+  template render of dapr-1351.
+- The `env_dockerfiles/` asset tree (dapr + XTLS Dockerfiles, XTLS map.json),
+  `derive_env_dockerfile_map.py`, `tests/test_env_dockerfile_swap.py`.
+- README/RUBRIC pointers. The `ENV_DOCKERFILE_SOURCE` env var **no longer
+  exists** — there is only the template path now.
+- The 2026-08-12 `--delivery` intake automation (built on top of the swap) was
+  **dropped before ever being pushed** (local commit bddc34b removed via reset;
+  workflow returns to: jsonl manually copied into `dataset/`, runs via
+  `--dataset`).
+
+**Kept deliberately:** the lazy `import litellm` fix inside
+`derive_cost_from_tokens` (a real crash fix that shipped inside e512241 —
+zero-cost bridge conversions would NameError without it).
+
+**Known, accepted mixed state:** the 31 dapr bundles produced 2026-08-11→08-12
+retain input-style Dockerfiles (user decision: leave as-is, no regeneration).
+Bundles produced after this revert carry template Dockerfiles. QC should not
+flag this as a defect.
+
+Everything below this line is the ORIGINAL 2026-08-11 change record, kept as
+history.
+
+---
+
 # DOCKERFILE_SWAP — bundle `environment/Dockerfile` now ships the input task-folder Dockerfile
 
 *Directive: TL, 2026-08-11 (relayed and confirmed by Anzar). Implemented 2026-08-11, commit `e512241`.*
