@@ -55,11 +55,9 @@ def assay_block(report: dict[str, Any]) -> dict[str, Any]:
     proc = report.get("process") or {}
     return {
         "alpha": comp.get("alpha"),
-        "kappa": comp.get("kappa"),
-        "rubric_weight": comp.get("rubric_weight"),
         "gate": proc.get("gate"),
         "stratum_size": comp.get("stratum_size"),
-        "council": (report.get("council") or {}).get("members"),
+        "judge": (report.get("judge") or {}).get("model"),
         "status": report.get("status"),
     }
 

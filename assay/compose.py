@@ -1,15 +1,16 @@
 """Compose outcome and process into one score.
 
-Three constants that were hand-set are now derived. The channel split follows
-measured inter-rater agreement rather than the fixed 0.7/0.3, whose stated
-justification ("no measured kappa") went stale once kappa was measured on 297
-runs and which only ever argued for a direction, not a value. The shaping width
-follows the outcome gaps a task actually exhibits rather than a global 0.05,
-whose per-target-test invariant held only for T <= 9 and failed on 9 of 30
-tasks. The process term is normalized inside an outcome stratum, which is what
-HERO (arXiv:2510.07242) actually contributes: because the bands do not overlap,
-process structurally cannot move a run across the outcome boundary, where a
-magnitude bound only caps how far it moves.
+The reward runs on a single LLM judge, so the rubric channel's weight is a
+fixed, documented constant rather than the measured inter-rater agreement it
+used to be: kappa exists only to discount a council when its members disagree,
+and with one judge there is no agreement to measure — any value would be
+invented (change spec "remove kappa, keep alpha"). The shaping width (alpha)
+is unchanged: it follows the task's own outcome resolution so the process term
+can rank equal-outcome runs without ever bridging a real outcome gap. The
+process term is normalized inside an outcome stratum for score_rl, which is
+what HERO (arXiv:2510.07242) actually contributes: because the bands do not
+overlap, process structurally cannot move a run across the outcome boundary,
+where a magnitude bound only caps how far it moves.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from typing import Iterable, Sequence
 __all__ = [
     "ALPHA_CAP",
     "FLAT_STRATUM",
-    "channel_weight",
     "process_score",
     "alpha_for_group",
     "stratify",
@@ -40,13 +40,16 @@ ALPHA_CAP = 0.05
 FLAT_STRATUM = 0.05
 
 
-def channel_weight(kappa: float | None) -> float:
-    return max(0.0, float(kappa)) if kappa is not None else 0.0
+def process_score(*, det: float, rubric: float | None) -> float:
+    """Plain average of the two process channels: (det + rubric) / 2.
 
-
-def process_score(*, det: float, rubric: float | None, kappa: float | None) -> float:
-    w = 0.0 if rubric is None else channel_weight(kappa)
-    return (det + w * (rubric or 0.0)) / (1.0 + w)
+    The single judge and the rule checks count equally — no weight dial, no
+    agreement statistic. An unjudged run has no rubric channel to average, so
+    its process score is the deterministic channel alone.
+    """
+    if rubric is None:
+        return det
+    return (det + rubric) / 2.0
 
 
 # Outcome differences below this are not a quality ordering worth protecting:
@@ -106,12 +109,11 @@ def eval_score(
     outcome: float,
     det: float,
     rubric: float | None,
-    kappa: float | None,
     alpha: float,
     gate: int,
 ) -> float:
     """Absolute and comparable: a run's score never moves because a peer changed."""
-    p = process_score(det=det, rubric=rubric, kappa=kappa)
+    p = process_score(det=det, rubric=rubric)
     return combine(outcome=outcome, p=p, alpha=alpha, gate=gate)
 
 
@@ -120,13 +122,12 @@ def rl_score(
     outcome: float,
     det: float,
     rubric: float | None,
-    kappa: float | None,
     alpha: float,
     gate: int,
     stratum_processes: Sequence[float],
 ) -> float:
     """Group-relative: only within-stratum ordering carries, as GRPO expects."""
-    p = process_score(det=det, rubric=rubric, kappa=kappa)
+    p = process_score(det=det, rubric=rubric)
     return combine(
         outcome=outcome, p=stratify(p, stratum_processes), alpha=alpha, gate=gate
     )

@@ -121,14 +121,40 @@ def test_process_json_key_paths():
     ref = json.loads((ref_run / "verifier" / "process.json").read_text())
     skip = re.compile(
         r"\.detail\.deterministic\.checks\.|\.detail\.rubric\.items\.|"
-        r"\.council\.members\.|\.rl\.|\.efficiency\."
+        r"\.council\.|\.judge\.|\.rl\.|\.efficiency\."
     )
     o = {k for k in keypaths(ours) if not skip.search(k + ".")}
     r = {k for k in keypaths(ref) if not skip.search(k + ".")}
-    assert {k.split(".")[1] for k in o if k.count(".") == 1} == {
-        k.split(".")[1] for k in r if k.count(".") == 1
+    # Single-judge divergence from the corpus (remove kappa, keep alpha): the
+    # council block became judge{model}; composition dropped kappa/kappa_scope
+    # and the rubric_weight dial (the process score is the plain average, so
+    # there is no weight to record); process dropped contested_items and the
+    # weights block; detail.rubric dropped judge_members/contested/
+    # dissent_filtered and per-item resolution.
+    ref_to_ours = {"council": "judge"}
+    removed = {
+        ".composition.kappa",
+        ".composition.kappa_scope",
+        ".composition.rubric_weight",
+        ".process.contested_items",
+        ".process.weights",
+        ".process.weights.deterministic",
+        ".process.weights.rubric",
+        ".process.weights.normalised_by",
+        ".detail.rubric.judge_members",
+        ".detail.rubric.contested",
+        ".detail.rubric.dissent_filtered",
     }
-    assert list(ours) == list(ref)  # top-level key order
+    assert {k.split(".")[1] for k in o if k.count(".") == 1} == {
+        ref_to_ours.get(k.split(".")[1], k.split(".")[1])
+        for k in r
+        if k.count(".") == 1
+    }
+    assert o == r - removed
+    assert list(ours) == [ref_to_ours.get(k, k) for k in ref]  # top-level key order
+    assert list(ours["judge"]) == ["model"] and ours["judge"]["model"]
+    assert "kappa" not in json.dumps(ours)
+    assert "rubric_weight" not in ours["composition"]
     assert ours["status"] in ("scored", "voided", "unverifiable")
 
 
@@ -163,7 +189,8 @@ def test_final_score_md_template():
         text = re.sub(r"(?m)^(# Score — ).*$", r"\1X", text)
         text = re.sub(r"(?m)^(Status:) \w+ *$", r"\1 X", text)
         text = re.sub(r"(?m)^(Gate:) .*$", r"\1 X", text)
-        text = re.sub(r"(?m)^(Judges:) .*$", r"\1 X", text)
+        # ours says "Judge: <model>" (single judge), the corpus "Judges: n=…, κ=…"
+        text = re.sub(r"(?m)^Judges?: .*$", "Judge: X", text)
         # the process formula spells out the composition weights, which depend
         # on gate/kappa state: "(det + N·rubric) / N" when judged and open,
         # "N·det + N·rubric" when the rubric channel is zero-weighted
@@ -207,12 +234,20 @@ def test_result_json_writeback_structure():
             "score_rl",
         ):
             assert key in vr["scores"], (root, key)
-        assert list(vr["assay"]) == [
-            "alpha",
-            "kappa",
-            "rubric_weight",
-            "gate",
-            "stratum_size",
-            "council",
-            "status",
-        ], root
+    # the corpus predates the single-judge change and keeps kappa/council
+    assert list(ref_vr["assay"]) == [
+        "alpha",
+        "kappa",
+        "rubric_weight",
+        "gate",
+        "stratum_size",
+        "council",
+        "status",
+    ]
+    assert list(ours_vr["assay"]) == [
+        "alpha",
+        "gate",
+        "stratum_size",
+        "judge",
+        "status",
+    ]

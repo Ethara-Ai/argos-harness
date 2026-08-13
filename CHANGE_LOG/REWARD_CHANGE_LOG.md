@@ -1,3 +1,68 @@
+# Reward Change Log — plain-average process score: kappa AND weight constant removed (2026-08-13)
+
+**Date:** 2026-08-13 (evening) · **Directive:** Anzar, aligned with TL's expected artifact
+(`**process** = (det + 1·rubric) / 2` shown as the required final_score.md row), tightened by
+Anzar's explicit follow-up: *no weight constant either* — a dial that only ever multiplies by
+one is dead weight. · **Supersedes** the REVERTED chapter below: the zero-weighting accepted
+there is now resolved the other way.
+
+**The formula:** `process = (det + rubric) / 2` — plain average, written directly, no
+`RUBRIC_WEIGHT`, no `channel_weight(kappa)`, no kappa. An unjudged run (no rubric channel to
+average) scores `process = det`, same fallback as both prior designs. Numerically identical to
+7514c58's `w = 1.0` blend; the difference is that the weight *machinery* is gone from code and
+artifacts, not just neutralized.
+
+**How it was made:** `git revert 0dc59e7` (re-applying 7514c58: kappa removal, judge block,
+`agreement.py` deleted) folded together with the RUBRIC_WEIGHT removal into this one commit.
+Conflicts with the weight-ladder commit (`de18e85`, which landed between) resolved by unioning
+the replay test's exemption sets and regenerating both pilot fixtures with the live scorer.
+
+**Beyond the 7514c58 schema, this removes:**
+
+| Where | 7514c58 had | Now |
+|---|---|---|
+| `assay/compose.py` | `RUBRIC_WEIGHT = 1.0`, weighted blend | `process_score` = plain average, no constant |
+| `process.json` composition | `rubric_weight: 1.0` | key absent |
+| `process.json` process | `weights: {deterministic, rubric, normalised_by}` | key absent |
+| `result.json` assay block | `{alpha, rubric_weight, gate, stratum_size, judge, status}` | `{alpha, gate, stratum_size, judge, status}` |
+| `final_score.md` | `**process** = (det + 1·rubric) / 2` | `**process** = (det + rubric) / 2` (`det (unjudged)` when unjudged) |
+| `assay/report.py` | `channel_weights` property | removed (nothing to report — the average is self-describing) |
+
+**What did NOT change:** the outcome score (`score_v2g`), all 28 deterministic checks and the
+{1,3,5} weight ladder (`de18e85` untouched), hard-gate void semantics, the rubric tally
+(dimension budgets, floor band, abstention ladder), alpha (`alpha_for_task`, cap 0.05), the
+stratified `score_rl` form, every harness-owned score field, and all stored verdicts (the
+bundle fingerprint excludes composition — no re-judging anywhere).
+
+**Tests:** 37 green, including the 4-bundle corpus replay (`test_assay_replay.py`, exemption
+set = union of single-judge + ladder paths; legacy 2-judge council stores still replay),
+`test_assay_compose.py` re-pinned to the plain average and to the *absence* of
+`RUBRIC_WEIGHT`/`channel_weight`, `test_bundle_structure.py` (removed-keys set gains
+`composition.rubric_weight` + `process.weights.*`), pilot regression and weight-ladder suites
+unmodified.
+
+**Numeric effect** (both pilots stay gated — rewards 0.0 — but process now counts the judge):
+
+| Run | det | rubric | process before (det only) | process now |
+|---|--:|--:|--:|--:|
+| tortoise-538 opus-4.8/run_1 | 0.1250 | 0.4147 | 0.1250 | 0.2699 (B4-voided) |
+| tortoise-943 opus-4.8/run_1 | 0.2222 | 0.8779 | 0.2222 | 0.5500 (B1-gated) |
+| smoke dapr-1351 (edd779ae) | 0.1875 | 0.4029 | 0.1875 | 0.2952, score_eval 0.0295 |
+| smoke dapr-1638 (6816e922) | 0.1250 | 0.4911 | 0.1250 | 0.3080, score_eval 0.0308 |
+
+Smoke bundles rescored in place from stored verdicts. **Corpus-format divergence is accepted**
+(the very concern that drove the 0dc59e7 revert): council/kappa fields no longer appear in our
+artifacts; the replay test asserts equivalence channel-by-channel instead of byte-identity, as
+under 7514c58. Scores are again not comparable across eras — nothing delivered mixes formats
+(all pre-change outputs were already discarded for regeneration).
+
+## How to revert
+
+One commit. `git log --oneline --grep="plain-average"`, then `git revert <sha>` — restores the
+kappa-era scorer, `agreement.py`, both fixtures and all tests together.
+
+---
+
 # Reward Change Log — weight ladder: det check weights onto {1, 3, 5} (2026-08-13)
 
 **Date:** 2026-08-13 · **Directive (TL, relayed by Anzar):** every weight in delivered artifacts must lie in {-5, -3, -1, 1, 3, 5}. Rubric items already comply (`assay/lint.py ALLOWED_WEIGHTS`); this change brings the deterministic check channel onto the positive half of the same ladder. **Forward-only:** nothing already delivered is rescored.

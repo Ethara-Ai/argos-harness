@@ -270,7 +270,7 @@
       "score_outcome": 0.0,
       "score_deterministic": 0.125,
       "score_rubric": 0.4147,
-      "score_process": 0.125,
+      "score_process": 0.2699,
       "score_eval": 0.0,
       "score_rl": 0.0
     },
@@ -304,13 +304,9 @@
     },
     "assay": {
       "alpha": 0.017857,
-      "kappa": null,
-      "rubric_weight": 0.0,
       "gate": 0,
       "stratum_size": 1,
-      "council": [
-        "sonnet-5"
-      ],
+      "judge": "sonnet-5",
       "status": "voided"
     }
   },
