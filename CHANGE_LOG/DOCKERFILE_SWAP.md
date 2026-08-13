@@ -3,7 +3,7 @@
 **TL directive 2026-08-13 (relayed and confirmed by Anzar): full removal.**
 Bundles' `environment/Dockerfile` is **template-rendered again** (the original
 behavior: task-template skeleton + repo name + per-PR ECR base image). Removed
-in revert commit `79ba82e`:
+in revert commit `b45e91d`:
 
 - `converter.resolve_env_dockerfile` + `ENV_DOCKERFILES_DIR` + the build_task
   input branch — build_task restored byte-faithfully from pre-swap history
