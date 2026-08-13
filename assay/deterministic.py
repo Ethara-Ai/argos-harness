@@ -223,9 +223,11 @@ OUT_OF_SCOPE_RE = re.compile(
     r"/docs?/|\.md$|/scaffold/)"
 )
 
-# Set to 8, not 1: at parity with hygiene checks the requirement signal drowned,
-# and the one prototype run satisfying both requirements tied with two satisfying one.
-REQUIREMENT_WEIGHT = 8
+# The ladder ceiling, not 1: at parity with hygiene checks the requirement
+# signal drowned, and the one prototype run satisfying both requirements tied
+# with two satisfying one. Was 8 before the weight-ladder change; 5 keeps E2
+# dominant while every emitted weight sits on the {1, 3, 5} ladder.
+REQUIREMENT_WEIGHT = 5
 SITE_WEIGHT = 3
 
 
@@ -333,7 +335,7 @@ GENERIC_FAMILIES: dict[str, Family] = {
     ),
     "C6-no-unknown-breaks": Family(
         Gate.SOFT,
-        2,
+        1,
         "scope_discipline",
         "Tests broken outside the preserve set are counted.",
     ),
@@ -372,9 +374,11 @@ GENERIC_FAMILIES: dict[str, Family] = {
         "The run satisfied a named requirement. Full weight only when no target "
         "test observes it, since the outcome channel already prices the rest.",
     ),
+    # 3, not 1: reaching the files an issue names is worth more than hygiene
+    # but must stay below satisfying a requirement outright (E2 = 5).
     "E3-issue-reach": Family(
         Gate.SOFT,
-        1,
+        3,
         "issue_coverage",
         "The run reached the files an announced issue names.",
     ),
@@ -392,7 +396,7 @@ GENERIC_FAMILIES: dict[str, Family] = {
     ),
     "F1-no-out-of-scope-churn": Family(
         Gate.SOFT,
-        2,
+        1,
         "scope_discipline",
         "The run left CI, docker, docs and lockfiles alone.",
     ),
@@ -406,8 +410,10 @@ GENERIC_FAMILIES: dict[str, Family] = {
 # it get there by the golden method" are different questions about the same site,
 # so the second is still worth asking; the discount acknowledges that the first is
 # already priced by continuous_score_v2. ALPHA bounds the process term, so the
-# overlap cannot move the optimum.
-REDUNDANCY_DISCOUNT = 0.5
+# overlap cannot move the optimum. Discounting steps one rung down the {1, 3, 5}
+# weight ladder; multiplying and rounding would land between rungs
+# (round(5 * 0.5) == 2).
+DISCOUNT_STEP = {5: 3, 3: 1}
 
 
 def evaluate(
@@ -675,7 +681,7 @@ def _fairplay(task: TaskBundle, run: RunBundle, edits: EditSet) -> list[CheckRes
             Gate.SOFT,
             not (isinstance(unk, int) and unk > 0),
             f"unknown_breaks_count={unk}",
-            weight=2,
+            weight=1,
         )
     )
     return out
@@ -772,7 +778,7 @@ def _locality(
                     Gate.SOFT,
                     Verdict.ABSTAIN,
                     "edit reconstruction incomplete",
-                    weight=6,
+                    weight=3,
                 )
             )
         else:
@@ -783,7 +789,7 @@ def _locality(
                     len(reached) == len(total_issue_sites),
                     f"reached {len(reached)}/{len(total_issue_sites)} issues: "
                     f"{sorted(total_issue_sites - reached)} not touched",
-                    weight=6,
+                    weight=3,
                 )
             )
 
@@ -818,9 +824,7 @@ def _locality(
     for site in truth.sites:
         touched = edits.touched(site.path)
         unobserved = any(not r.load_bearing for r in site.requirements)
-        site_weight = (
-            SITE_WEIGHT if unobserved else round(SITE_WEIGHT * REDUNDANCY_DISCOUNT)
-        )
+        site_weight = SITE_WEIGHT if unobserved else DISCOUNT_STEP[SITE_WEIGHT]
         if not touched and not edits.complete:
             reach = CheckResult(
                 f"E1-touched:{site.path}",
@@ -854,7 +858,7 @@ def _locality(
         for req in site.requirements:
             cid = f"E2-req:{req.id}"
             weight = (
-                round(REQUIREMENT_WEIGHT * REDUNDANCY_DISCOUNT)
+                DISCOUNT_STEP[REQUIREMENT_WEIGHT]
                 if req.load_bearing
                 else REQUIREMENT_WEIGHT
             )
@@ -970,7 +974,7 @@ def _economy(
             Gate.SOFT,
             not off,
             f"wrote CI/docker/docs/lockfiles: {off[:3]}",
-            weight=2,
+            weight=1,
         )
     )
 

@@ -8,6 +8,12 @@ recorded verdicts.jsonl, run `assay score --write` on a copy, and diff every
 process.json (modulo version.scorer — our scorer stamp legitimately differs),
 final_score.md, verdicts.jsonl and result.json against the originals.
 
+The weight-ladder change (2026-08-13) moved the det check weights off the
+corpus's 8/2/6 onto the {1,3,5} ladder, so every det-DERIVED number diverges by
+design; those paths are exempted below and replaced by the ladder invariant.
+Check ids, gates, verdicts, details and the whole rubric/outcome side stay
+byte-pinned to the corpus.
+
 Covered cases: scored, voided (C1-no-upstream-content-fetched,
 C3-no-graded-test-write) and unverifiable (B1-scored-status).
 """
@@ -15,6 +21,7 @@ C3-no-graded-test-write) and unverifiable (B1-scored-status).
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -36,6 +43,31 @@ BUNDLES = {
 pytestmark = pytest.mark.skipif(
     not CORPUS.exists(), reason="reference corpus not present"
 )
+
+# Values the weight-ladder change legitimately moves (all downstream of the det
+# soft score). Everything outside these paths must replay byte-identically.
+CHANGED = re.compile(
+    r"^\.version\.scorer$|"
+    r"^\.process\.(deterministic|score)$|"
+    r"^\.composition\.(process|process_stratified|score_eval|score_rl)$|"
+    r"^\.rl\.score_rl$|"
+    r"^\.detail\.deterministic\.soft_score$|"
+    r"^\.detail\.deterministic\.checks\[\d+\]\.weight$"
+)
+
+# result.json score fields downstream of the det channel; the harness-owned
+# score/score_binary/score_continuous_v2 and the judge-owned score_rubric,
+# score_outcome must still match the corpus exactly.
+DET_DERIVED_SCORES = ("score_deterministic", "score_process", "score_eval", "score_rl")
+
+
+def _mask_det_rows(md: str) -> str:
+    """Blank the four det-derived values in final_score.md, nothing else."""
+    md = re.sub(r"(?m)^(\| deterministic \(soft\) \|).*$", r"\1 X |", md)
+    md = re.sub(r"(?m)^(\| \*\*process\*\*[^|]*\|).*$", r"\1 X |", md)
+    md = re.sub(r"(?m)^(\| \*\*score_eval\*\*[^|]*\|).*$", r"\1 X |", md)
+    md = re.sub(r"(?m)^(\| \*\*score_rl\*\*[^|]*\|).*$", r"\1 X |", md)
+    return md
 
 
 def _flat(d, p=""):
@@ -93,24 +125,31 @@ def test_corpus_replay_regenerates_identically(uuid: str, tmp_path: Path):
         rel = run_dir.relative_to(CORPUS / uuid)
         ours = replayed / rel
 
+        new_doc = json.loads((ours / "verifier" / "process.json").read_text())
         old = _flat(json.loads((run_dir / "verifier" / "process.json").read_text()))
-        new = _flat(json.loads((ours / "verifier" / "process.json").read_text()))
+        new = _flat(new_doc)
         diffs = [
             k
             for k in set(old) | set(new)
-            if old.get(k) != new.get(k) and k != ".version.scorer"
+            if old.get(k) != new.get(k) and not CHANGED.match(k)
         ]
         assert diffs == [], f"{rel}: {sorted(diffs)[:6]}"
+        # the ladder invariant replaces the exact-weight pin lifted above
+        emitted = {c["weight"] for c in new_doc["detail"]["deterministic"]["checks"]}
+        assert emitted <= {0, 1, 3, 5}, f"{rel}: off-ladder weights {emitted}"
 
-        assert (run_dir / "verifier" / "final_score.md").read_text() == (
-            ours / "verifier" / "final_score.md"
-        ).read_text(), rel
+        assert _mask_det_rows(
+            (run_dir / "verifier" / "final_score.md").read_text()
+        ) == _mask_det_rows((ours / "verifier" / "final_score.md").read_text()), rel
         assert (run_dir / "verifier" / "verdicts.jsonl").read_bytes() == (
             ours / "verifier" / "verdicts.jsonl"
         ).read_bytes(), rel
-        assert json.loads((run_dir / "result.json").read_text()) == json.loads(
-            (ours / "result.json").read_text()
-        ), rel
+        old_r = json.loads((run_dir / "result.json").read_text())
+        new_r = json.loads((ours / "result.json").read_text())
+        for doc in (old_r, new_r):
+            for key in DET_DERIVED_SCORES:
+                doc["verifier_result"]["scores"].pop(key, None)
+        assert old_r == new_r, rel
 
 
 def test_bundle_fingerprint_matches_corpus_recordings():

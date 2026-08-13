@@ -1,6 +1,6 @@
 {
   "version": {
-    "scorer": "33d326269b15c7dc"
+    "scorer": "01878bbe7dbc957c"
   },
   "task_uuid": "150c282e-330b-492e-bcaf-1017bbfff2e8",
   "instance_id": "tortoise__tortoise-orm-943",
@@ -14,7 +14,7 @@
     "source": "result.json verifier_result.scores (read, never recomputed)"
   },
   "process": {
-    "score": 0.1887,
+    "score": 0.2222,
     "gate": 0,
     "weights": {
       "deterministic": 1.0,
@@ -24,7 +24,7 @@
     "judged": true,
     "missing_items": [],
     "rubric_abstained": [],
-    "deterministic": 0.1887,
+    "deterministic": 0.2222,
     "rubric": 0.8779,
     "rubric_raw": 0.8714,
     "hard_failures": [
@@ -58,7 +58,7 @@
     "kappa": null,
     "kappa_scope": "task_pooled",
     "rubric_weight": 0.0,
-    "process": 0.1887,
+    "process": 0.2222,
     "process_stratified": 0.5,
     "stratum_size": 1,
     "score_eval": 0.0,
@@ -88,7 +88,7 @@
       "model": "opus-4.8",
       "run_id": "run_1",
       "voided": true,
-      "soft_score": 0.1887,
+      "soft_score": 0.2222,
       "edit_set_complete": true,
       "hard_failures": [
         "B1-scored-status",
@@ -210,7 +210,7 @@
           "id": "C6-no-unknown-breaks",
           "gate": "soft",
           "verdict": "pass",
-          "weight": 2,
+          "weight": 1,
           "detail": "unknown_breaks_count=0"
         },
         {
@@ -245,7 +245,7 @@
           "id": "E2-req:S1-changed",
           "gate": "soft",
           "verdict": "fail",
-          "weight": 8,
+          "weight": 5,
           "detail": "no target test observes it, so the outcome channel is blind to it and this is where it is priced. The reference change to tortoise/expressions.py is present. Any edit that achieves the sam"
         },
         {
@@ -259,21 +259,21 @@
           "id": "E2-req:S2-removed",
           "gate": "soft",
           "verdict": "abstain",
-          "weight": 8,
+          "weight": 5,
           "detail": "the run never wrote this file, so a removal requirement says nothing here"
         },
         {
           "id": "E1-touched:tortoise/functions.py",
           "gate": "soft",
           "verdict": "fail",
-          "weight": 2,
+          "weight": 1,
           "detail": "writes=0"
         },
         {
           "id": "E2-req:S3-removed",
           "gate": "soft",
           "verdict": "abstain",
-          "weight": 4,
+          "weight": 3,
           "detail": "the run never wrote this file, so a removal requirement says nothing here"
         },
         {
@@ -287,7 +287,7 @@
           "id": "E2-req:S4-changed",
           "gate": "soft",
           "verdict": "fail",
-          "weight": 8,
+          "weight": 5,
           "detail": "no target test observes it, so the outcome channel is blind to it and this is where it is priced. The reference change to tortoise/queryset.py is present. Any edit that achieves the same o"
         },
         {
@@ -301,7 +301,7 @@
           "id": "E2-req:S5-changed",
           "gate": "soft",
           "verdict": "fail",
-          "weight": 8,
+          "weight": 5,
           "detail": "no target test observes it, so the outcome channel is blind to it and this is where it is priced. The reference change to tortoise/indexes.py is present. Any edit that achieves the same ob"
         },
         {
@@ -315,7 +315,7 @@
           "id": "E2-req:S6-changed",
           "gate": "soft",
           "verdict": "fail",
-          "weight": 8,
+          "weight": 5,
           "detail": "no target test observes it, so the outcome channel is blind to it and this is where it is priced. The reference change to tortoise/timezone.py is present. Any edit that achieves the same o"
         },
         {
@@ -329,7 +329,7 @@
           "id": "E2-req:S7-changed",
           "gate": "soft",
           "verdict": "fail",
-          "weight": 4,
+          "weight": 3,
           "detail": "observed by a target test, so already priced by the outcome channel; discounted here. The reference change to setup.cfg is present. Any edit that achieves the same observable b"
         },
         {
@@ -343,14 +343,14 @@
           "id": "E2-req:S8-changed",
           "gate": "soft",
           "verdict": "pass",
-          "weight": 4,
+          "weight": 3,
           "detail": "observed by a target test, so already priced by the outcome channel; discounted here. The reference change to tortoise/models.py is present. Any edit that achieves the same obs"
         },
         {
           "id": "F1-no-out-of-scope-churn",
           "gate": "soft",
           "verdict": "fail",
-          "weight": 2,
+          "weight": 1,
           "detail": "wrote CI/docker/docs/lockfiles: ['/workspace/tortoise-orm/docs/expressions.rst']"
         },
         {

@@ -85,8 +85,13 @@ def test_rubrics_json_structure():
     assert set(ours_g) == set(ref_g) == {f"G{n}" for n in range(1, 8)}
     assert ours_g == ref_g
 
-    # the 28 deterministic check descriptors are constant corpus-wide
-    assert ours["checks"] == ref["checks"]
+    # the 28 check descriptors match the corpus except weights, which moved
+    # onto the {1,3,5} ladder (weight-ladder change; the corpus keeps 8/2/…)
+    assert set(ours["checks"]) == set(ref["checks"])
+    for cid, ref_c in ref["checks"].items():
+        ours_c = dict(ours["checks"][cid])
+        assert ours_c.pop("weight") in (1, 3, 5), cid
+        assert ours_c == {k: v for k, v in ref_c.items() if k != "weight"}, cid
 
 
 def test_truth_md_sections():

@@ -323,9 +323,9 @@
       "score_binary": 0.0,
       "score_continuous_v2": 0.0,
       "score_outcome": 0.0,
-      "score_deterministic": 0.1887,
+      "score_deterministic": 0.2222,
       "score_rubric": 0.8779,
-      "score_process": 0.1887,
+      "score_process": 0.2222,
       "score_eval": 0.0,
       "score_rl": 0.0
     },

@@ -1,3 +1,29 @@
+# Reward Change Log — weight ladder: det check weights onto {1, 3, 5} (2026-08-13)
+
+**Date:** 2026-08-13 · **Directive (TL, relayed by Anzar):** every weight in delivered artifacts must lie in {-5, -3, -1, 1, 3, 5}. Rubric items already comply (`assay/lint.py ALLOWED_WEIGHTS`); this change brings the deterministic check channel onto the positive half of the same ladder. **Forward-only:** nothing already delivered is rescored.
+
+**What changed** (all in `assay/deterministic.py`):
+
+| check | before | after |
+|---|--:|--:|
+| `E2-req` (`REQUIREMENT_WEIGHT`) | 8 | **5** |
+| `C6-no-unknown-breaks` | 2 | **1** |
+| `F1-no-out-of-scope-churn` | 2 | **1** |
+| `E3-issue-reach` | declared 1, **emitted 6** (live mismatch) | **3** both |
+| discount for target-test-observed sites/requirements | `round(w × 0.5)` → 4 and 2 | `DISCOUNT_STEP = {5: 3, 3: 1}` (one rung down; multiply-and-round lands between rungs: `round(5·0.5) == 2`) |
+
+Every weight the engine can now emit is in {0, 1, 3, 5}; 0 is not a weight but the existing "row excluded" marker (an E1 row a scored E2 requirement already entails). Pinned by `tests/test_weight_ladder.py`.
+
+**What did NOT change:** the outcome score (`score_v2g`), all check ids/gates/verdicts/details (28 families, 16 hard / 12 soft), hard-gate void semantics, the rubric channel (its per-item continuous weights are dimension-budget-rescaled — a different vocabulary, untouched), kappa/alpha/composition formulas, every harness-owned score field, judge verdicts (the bundle fingerprint excludes the checks table, so no re-judging). `soft_score` is a weighted ratio, so only the relative masses moved: E2 stays the dominant weight (5 vs hygiene 1), slightly less dominant than at 8.
+
+**Consequences accepted:** `score_deterministic`/`score_process`/`score_eval`/`score_rl` shift for everything scored from now on (fixtures: U538 det 0.1017 → 0.125, U943 det 0.1887 → 0.2222); scores are not comparable across the weight eras. `tests/test_assay_replay.py` now exempts exactly the det-derived value paths (weights, soft_score, and their downstream composition numbers) and instead asserts the ladder invariant — check ids/gates/verdicts/details and the whole rubric/outcome side remain byte-pinned to the corpus. `tests/test_bundle_structure.py` compares the checks table to the corpus weight-exempt. The 33 old-era bundles under `milo_bundles/` and their `rubrics.json`/`process.json` keep the old numbers on purpose.
+
+## How to revert
+
+One commit. `git log --oneline --grep="weight ladder"`, then `git revert <sha>` (restores engine, tests and both pilot fixtures together).
+
+---
+
 # Reward Change Log — REVERTED 2026-08-13 (original change record below)
 
 **TL directive 2026-08-13 (relayed and confirmed by Anzar): full revert of

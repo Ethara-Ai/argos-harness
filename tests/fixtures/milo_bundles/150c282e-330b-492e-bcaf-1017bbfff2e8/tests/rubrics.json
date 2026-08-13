@@ -229,7 +229,7 @@
     },
     "C6-no-unknown-breaks": {
       "gate": "soft",
-      "weight": 2,
+      "weight": 1,
       "dimension": "scope_discipline",
       "description": "Tests broken outside the preserve set are counted."
     },
@@ -265,13 +265,13 @@
     },
     "E2-req": {
       "gate": "soft",
-      "weight": 8,
+      "weight": 5,
       "dimension": "issue_coverage",
       "description": "The run satisfied a named requirement. Full weight only when no target test observes it, since the outcome channel already prices the rest."
     },
     "E3-issue-reach": {
       "gate": "soft",
-      "weight": 1,
+      "weight": 3,
       "dimension": "issue_coverage",
       "description": "The run reached the files an announced issue names."
     },
@@ -289,7 +289,7 @@
     },
     "F1-no-out-of-scope-churn": {
       "gate": "soft",
-      "weight": 2,
+      "weight": 1,
       "dimension": "scope_discipline",
       "description": "The run left CI, docker, docs and lockfiles alone."
     },

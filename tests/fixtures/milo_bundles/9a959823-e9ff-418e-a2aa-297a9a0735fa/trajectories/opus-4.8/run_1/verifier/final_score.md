@@ -8,9 +8,9 @@ Judges: n=1 (sonnet-5)
 | channel | score |
 |---|--:|
 | outcome | 0.0 |
-| deterministic (soft) | 0.1017 |
+| deterministic (soft) | 0.1250 |
 | rubric | 0.4147 |
-| **process** = 1·det + 0·rubric | 0.1017 |
+| **process** = 1·det + 0·rubric | 0.1250 |
 
 | composed score | value |
 |---|--:|
