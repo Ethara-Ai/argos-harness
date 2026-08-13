@@ -5,7 +5,6 @@ uuid_v5 = "{task_uuid}"
 authors = [
     { name = "Suryansh Rana" },
     { name = "Sarvex Jatasara" },
-    { name = "Aditya Pathak" },
     { name = "Ankit Porwal" },
     { name = "Abhijeet Kumar Chaurasiya" },
     { name = "Gaurav Kumar" },

@@ -69,3 +69,4 @@ def test_authors_field_present() -> None:
     assert '{ name = "Suryansh Rana" }' in content
     assert '{ name = "Harish Yadav" }' in content
     assert '{ name = "Ankit kumar" }' not in content
+    assert '{ name = "Aditya Pathak" }' not in content
