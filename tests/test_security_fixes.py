@@ -9,6 +9,7 @@ Covers:
 """
 
 import asyncio
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -37,7 +38,9 @@ def test_push_icm_image_uses_list_form_no_shell():
     args, kwargs = mock_run.call_args
     cmd = args[0]
     assert isinstance(cmd, list), "docker push must be a list (argv), not a string"
-    assert cmd == ["docker", "push", "registry/image:tag"]
+    # safe_run hardens argv[0] to an absolute exe path (PATH-hijack defense).
+    assert os.path.basename(cmd[0]) == "docker"
+    assert cmd[1:] == ["push", "registry/image:tag"]
     assert kwargs.get("shell", False) is False
     assert "shell" not in kwargs or kwargs["shell"] is False
 
@@ -52,7 +55,8 @@ def test_push_icm_image_injection_is_neutralized():
     cmd = mock_run.call_args[0][0]
     # The malicious payload must be a single argv element passed verbatim to
     # docker (which will reject it), never split/interpreted by a shell.
-    assert cmd == ["docker", "push", malicious]
+    assert os.path.basename(cmd[0]) == "docker"
+    assert cmd[1:] == ["push", malicious]
     assert not Path("/tmp/pwned_push").exists()
 
 
