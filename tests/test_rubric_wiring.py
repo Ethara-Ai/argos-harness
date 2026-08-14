@@ -80,7 +80,7 @@ class TestRunEvalWiring:
         body = run_eval_src[fn:fn_end]
         # bundle source is computed from globals (set -u safe), per-uuid dir only
         src_idx = body.index(
-            'bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}/${uuid}"'
+            'bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/argos_bundles}/${uuid}"'
         )
         # the copy uses the per-uuid dir, so the sibling verdicts/ store can
         # never leak into the publish clone

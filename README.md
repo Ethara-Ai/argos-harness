@@ -234,7 +234,7 @@ edit this to `172.17.0.1:<port>` — while `rubric-judge.json` uses `127.0.0.1`
 ### Outputs
 
 - `eval_outputs/` — per-instance working dirs (trajectory, eval, harbor, logs). Regenerable; safe to delete between runs.
-- `milo_bundles/<uuid>/` — the deliverable milo bundles (trajectory + verifier + rubric). Wiped between fresh runs.
+- `argos_bundles/<uuid>/` — the deliverable milo bundles (trajectory + verifier + rubric). Wiped between fresh runs.
 - `<data-dir>/<uuid>/` — the same bundle staged flat into the publish clone (`milo-bench-samples` format), accumulating across runs; push manually from there. (Legacy `dataset/`+`trajectory/` split is staged only when no bundle exists, e.g. `RUBRIC_ENABLE=0`.)
 
 ## Rich Logging

@@ -14,7 +14,7 @@ Nothing here is paraphrased from docs.
 | Step | Command / code | Writes |
 |---|---|---|
 | 1. Outcome score | `benchmarks/multiswebench/scripts/harbor/converter.py:1309` calls `compute_score_v2g()` (`scripts/eval/score_v2g.py:90`) | `result.json → verifier_result.{scores, status, diagnostics}` — the initial file |
-| 2. Judging | `python -m assay … judge` — one LLM call per rubric item per run | `milo_bundles/verdicts/<uuid>/<model>__run_N.jsonl` (raw verdict text) |
+| 2. Judging | `python -m assay … judge` — one LLM call per rubric item per run | `argos_bundles/verdicts/<uuid>/<model>__run_N.jsonl` (raw verdict text) |
 | 3. Scoring | `python -m assay … score --write` (`assay/cli.py:586` `cmd_score`) | `verifier/process.json`, `verifier/final_score.md`, `verifier/verdicts.jsonl` (copy), and **merges** extra `score_*` fields + an `assay{}` block back into `result.json` (`assay/cli.py:855`) |
 
 Five numbers are computed, then combined by one formula applied twice:

@@ -9,7 +9,7 @@ set -uo pipefail
 # MANY datasets and executes up to --parallel of them at once. Each dataset is
 # one instance/bundle and gets its own harbor export under <tag>_harbor/.
 #
-# After each dataset finishes, its finished milo bundle (milo_bundles/<uuid>)
+# After each dataset finishes, its finished milo bundle (argos_bundles/<uuid>)
 # is staged FLAT into the publish clone as <uuid>/ (milo-bench-samples format);
 # when no bundle exists (RUBRIC_ENABLE=0) the legacy harbor split
 # dataset/<uuid>/ + trajectory/<uuid>/ is staged instead. The publish repo
@@ -124,7 +124,7 @@ Publishing (staging only -- all git commit/push automation is deliberately
 disabled; publish manually from the clone when ready):
   Each finished instance is staged into <data-dir>/ keyed by the dataset uuid:
     <uuid>/              (flat milo bundle, milo-bench-samples format --
-                          preferred; used whenever milo_bundles/<uuid> exists,
+                          preferred; used whenever argos_bundles/<uuid> exists,
                           even if rubric scoring ended in WARN/unscored)
     dataset/<uuid>/ + trajectory/<uuid>/
                          (legacy harbor split -- fallback when no bundle
@@ -1001,7 +1001,7 @@ stage_dataset() {
     # (milo-bench-samples format: <publish-base>/<uuid>/). Path computed from
     # globals on purpose -- the rubric block's MILO_DEST/MILO_BUNDLE locals are
     # unset when RUBRIC_ENABLE=0 and would abort under `set -u`.
-    local bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}/${uuid}"
+    local bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/argos_bundles}/${uuid}"
     local d_bundle="$PUBLISH_BASE/$uuid"
     local d_dataset="$PUBLISH_BASE/dataset/$uuid"
     local d_traj="$PUBLISH_BASE/trajectory/$uuid"
@@ -1467,7 +1467,7 @@ PYSCRIPT
                 # by walking parent directories.
                 if [[ "${RUBRIC_ENABLE:-0}" == "1" ]]; then
                     local RUBRIC_CFG="${RUBRIC_LLM_CONFIG:-${SCRIPT_DIR}/.llm_config/rubric-judge.json}"
-                    local MILO_DEST="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}"
+                    local MILO_DEST="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/argos_bundles}"
                     local MILO_BUNDLE="${MILO_DEST}/${DS_UUID}"
                     # Judge council derived from the config's judge_model so
                     # judge-time and score-time always agree (a mismatched

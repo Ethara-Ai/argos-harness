@@ -67,7 +67,7 @@ EGRESS_FILTER_DISABLE=1 RUBRIC_ENABLE=1 bash run_eval.sh \
 
 ## E. First-bundle verification (run ONE instance, inspect, then unleash the batch)
 
-Inspect `milo_bundles/<uuid>/` of the first finished instance:
+Inspect `argos_bundles/<uuid>/` of the first finished instance:
 
 | Check | Expect | Comes from |
 |---|---|---|
@@ -242,7 +242,7 @@ Full git revert executed; assay/ + fixtures + replay/structure tests byte-identi
 to pre-7514c58 (verified). Consequence accepted: single-judge process = det checks
 only, judge verdicts zero-weighted; corpus-format parity restored (council/kappa).
 SCORE_MATH.md deleted with the revert. ALL trajectories to be regenerated fresh —
-eval_outputs dapr dirs, milo_bundles, and our staged (untracked) uuid dirs in the
+eval_outputs dapr dirs, argos_bundles, and our staged (untracked) uuid dirs in the
 publish clone wiped per user decision. Details: REWARD_CHANGE_LOG.md REVERTED chapter.
 
 ### 2026-08-13 ~13:15 — code review of today's 6 commits + fresh smoke launch (Claude, user at lunch)
