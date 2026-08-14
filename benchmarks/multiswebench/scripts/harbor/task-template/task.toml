@@ -4,14 +4,11 @@ schema_version = "1.0"
 uuid_v5 = "{task_uuid}"
 authors = [
     { name = "Suryansh Rana" },
-    { name = "Sarvex Jatasara" },
-    { name = "Ankit Porwal" },
-    { name = "Abhijeet Kumar Chaurasiya" },
-    { name = "Gaurav Kumar" },
-    { name = "Dimple Soni" },
-    { name = "Prem Ayer" },
-    { name = "Rishav Kumar" },
-    { name = "Harish Yadav" },
+    { name = "Sarvex Jatasra" },
+    { name = "Prakhar Singh" },
+    { name = "Gautam Dubey" },
+    { name = "Amartya Kumar Yadav" },
+    { name = "Abhishek Verma" },
 ]
 keywords = ["{language}", "issue-resolving", "{repo_name}"]
 

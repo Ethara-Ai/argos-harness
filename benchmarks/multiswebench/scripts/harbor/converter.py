@@ -19,7 +19,7 @@ from benchmarks.multiswebench.scripts.eval.score_v2g import compute_score_v2g
 
 TEMPLATE_DIR = Path(__file__).parent / "task-template"
 DEFAULT_ECR_PREFIX = (
-    "426628337772.dkr.ecr.ap-south-1.amazonaws.com/rfp-coding-q1-tag-milo"
+    "426628337772.dkr.ecr.ap-south-1.amazonaws.com/argos"
 )
 
 _INTERVAL_CACHE: dict[str, list[tuple[int, int, str]]] | None = None

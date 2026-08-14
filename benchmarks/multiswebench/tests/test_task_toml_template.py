@@ -67,6 +67,7 @@ def test_authors_field_present() -> None:
     content = _read_task_toml()
     assert "authors = [" in content
     assert '{ name = "Suryansh Rana" }' in content
-    assert '{ name = "Harish Yadav" }' in content
+    assert '{ name = "Abhishek Verma" }' in content
     assert '{ name = "Ankit kumar" }' not in content
     assert '{ name = "Aditya Pathak" }' not in content
+    assert '{ name = "Harish Yadav" }' not in content
