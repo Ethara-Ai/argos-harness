@@ -1,15 +1,22 @@
-# Milo-Bench
+# Multi-SWE-Bench
 
-This repository contains benchmark evaluation infrastructure for Milo-Bench. It provides standardized evaluation pipelines for testing agent capabilities across various real-world tasks.
+This repository contains benchmark evaluation infrastructure for **Multi-SWE-Bench**, the multilingual extension of SWE-Bench for GitHub issue resolving ([arXiv:2504.02605](https://arxiv.org/abs/2504.02605) — 1,632 expert-annotated instances spanning Java, TypeScript, JavaScript, Go, Rust, C, and C++). It provides standardized evaluation pipelines for testing agent capabilities across various real-world tasks.
+
+This harness currently wires up the `java`, `python`, `go`, and `c` tracks (selected via the `LANGUAGE` environment variable). Multi-SWE-Bench is the primary suite here: it drives the end-to-end delivery pipeline in [`run_eval.sh`](#running-the-multi-swe-bench-delivery-pipeline-run_evalsh) (trajectory → evaluation → harbor conversion → rubric-scored bundle). Several sibling benchmarks are also maintained in this repo.
 
 ## Available Benchmarks
 
-| Benchmark                                   | Description                                                             | Status    |
-| ------------------------------------------- | ----------------------------------------------------------------------- | --------- |
-| [SWE-Bench](benchmarks/swebench/)              | Software engineering tasks from GitHub issues                           | ✅ Active |
-| [GAIA](benchmarks/gaia/)                       | General AI assistant tasks requiring multi-step reasoning               | ✅ Active |
-| [Commit0](benchmarks/commit0/)                 | Python function implementation tasks with unit tests                    | ✅ Active |
-| [OpenAgentSafety](benchmarks/openagentsafety/) | AI agent safety evaluation in workplace scenarios with NPC interactions | ✅ Active |
+| Benchmark                                              | Description                                                                                       | Status         |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | -------------- |
+| [Multi-SWE-Bench](benchmarks/multiswebench/)           | Multi-language software engineering tasks (Java, Python, Go, C); powers the `run_eval.sh` pipeline | ✅ Active      |
+| [SWE-Bench](benchmarks/swebench/)                      | Software engineering tasks from GitHub issues                                                      | ✅ Active      |
+| [SWE-Bench Multimodal](benchmarks/swebenchmultimodal/) | SWE-Bench tasks whose issues include images, diagrams, and screenshots                             | ✅ Active      |
+| [SWT-Bench](benchmarks/swtbench/)                      | Test generation: write failing tests that reproduce a GitHub issue                                 | ✅ Active      |
+| [GAIA](benchmarks/gaia/)                               | General AI assistant tasks requiring multi-step reasoning                                          | ✅ Active      |
+| [Commit0](benchmarks/commit0/)                         | Python function implementation tasks with unit tests                                               | ✅ Active      |
+| [OpenAgentSafety](benchmarks/openagentsafety/)         | AI agent safety evaluation in workplace scenarios with NPC interactions                            | ✅ Active      |
+| [SWE-Gym](benchmarks/swegym/)                          | Docker image builds only (training-data generation); no infer/eval entrypoint                      | 🧱 Images only |
+| [SWE-Smith](benchmarks/swesmith/)                      | Docker image builds only (training-data generation); no infer/eval entrypoint                      | 🧱 Images only |
 
 See the individual benchmark directories for detailed usage instructions.
 
@@ -110,16 +117,24 @@ uv run validate-cfg .llm_config/YOUR_CONFIG_PATH.json
 
 ## Running Benchmarks
 
-After setting up the environment and configuring your LLM, see the individual benchmark directories for specific usage instructions:
+After setting up the environment and configuring your LLM, see the individual benchmark directories for specific usage instructions. Each active benchmark exposes a matching `*-infer` / `*-eval` CLI pair (registered in `pyproject.toml`):
 
-- **[SWE-Bench](benchmarks/swebench/)**: Software engineering tasks from GitHub issues
-- **[GAIA](benchmarks/gaia/)**: General AI assistant tasks requiring multi-step reasoning
-- **[OpenAgentSafety](benchmarks/openagentsafety/)**: AI agent safety evaluation in workplace scenarios with NPC interactions
+| Benchmark | Inference | Evaluation |
+| --- | --- | --- |
+| [Multi-SWE-Bench](benchmarks/multiswebench/) | `uv run multiswebench-infer` | `uv run multiswebench-eval` |
+| [SWE-Bench](benchmarks/swebench/) | `uv run swebench-infer` | `uv run swebench-eval` |
+| [SWE-Bench Multimodal](benchmarks/swebenchmultimodal/) | `uv run swebenchmultimodal-infer` | `uv run swebenchmultimodal-eval` |
+| [SWT-Bench](benchmarks/swtbench/) | `uv run swtbench-infer` | `uv run swtbench-eval` |
+| [GAIA](benchmarks/gaia/) | `uv run gaia-infer` | `uv run gaia-eval` |
+| [Commit0](benchmarks/commit0/) | `uv run commit0-infer` | `uv run commit0-eval` |
+| [OpenAgentSafety](benchmarks/openagentsafety/) | `uv run openagentsafety-infer` | `uv run openagentsafety-eval` |
 
-## Running the Multi-SWE-bench milo pipeline (`run_eval.sh`)
+Multi-SWE-Bench additionally provides `multiswebench-harbor-convert` (harbor package export) and `multiswebench-rubric` (rubric authoring/judging), both of which `run_eval.sh` invokes for you.
+
+## Running the Multi-SWE-Bench delivery pipeline (`run_eval.sh`)
 
 The end-to-end delivery pipeline: dataset file → trajectory (Docker agent) →
-evaluation → harbor conversion → rubric-scored milo bundle. See `RUBRIC.md`
+evaluation → harbor conversion → rubric-scored bundle. See `RUBRIC.md`
 for the rubric/scoring internals.
 
 ### One-time machine setup
@@ -142,9 +157,6 @@ aws configure set aws_access_key_id     "$AWS_SECRET_KEY"
 aws configure set aws_secret_access_key "$AWS_ACCESS_SECRET_KEY"
 aws configure set region ap-south-1
 ```
-
-`.env` (repo root, never committed) must also carry `GITHUB_TOKEN` for the
-publish preflight.
 
 ### Before every run: the OAuth bridge
 
@@ -180,7 +192,7 @@ EGRESS_FILTER_DISABLE=1 RUBRIC_ENABLE=1 bash run_eval.sh \
   --llm-config .llm_config/claude-code.json \
   --dataset path/to/tortoise__tortoise-orm_dataset.jsonl \
   --ecr-prefix <account>.dkr.ecr.<region>.amazonaws.com/<repo-prefix> \
-  --lang python --no-push --data-dir ../milo-bench-dataset
+  --lang python --data-dir ../milo-bench-dataset
 
 # Go example (dapr): same command with --lang go and the dapr dataset file.
 ```
@@ -188,12 +200,13 @@ EGRESS_FILTER_DISABLE=1 RUBRIC_ENABLE=1 bash run_eval.sh \
 | Flag / env | Purpose |
 |---|---|
 | `EGRESS_FILTER_DISABLE=1` | Required on macOS: the container egress filter hard-fails under Docker Desktop |
-| `RUBRIC_ENABLE=1` | Turn on the milo bundle chain (export → author → judge → score) |
+| `RUBRIC_ENABLE=1` | Turn on the rubric bundle chain (export → author → judge → score) |
 | `--llm-config` | Trajectory model config (see model table below) |
 | `--dataset` | The team's dataset file — multi-instance files are split automatically, missing `number_interval` is backfilled from the registry |
+| `--dataset-dir DIR` | Alternative to `--dataset`: run every `*.jsonl` in `DIR` |
 | `--ecr-prefix` | Registry holding the pre-built task images (login happens inside the script) |
 | `--lang` | Task repo language (`python`, `go`, ...); else auto-detected per file |
-| `--no-push --data-dir DIR` | Stage into a local clone of the publish repo (default `EtharaOrion/milo-bench-samples`). NOTE: git commit/push automation is disabled by design in all modes — publishing is always a manual `git add/commit/push` from the clone |
+| `--data-dir DIR` | Pre-existing local directory for staging output (default `../milo-bench-dataset`). Must already exist as a writable directory. No git operations are performed; publish manually with `cd <dir> && git add <uuid> && git commit && git push` |
 | `--parallel N` | Instances run concurrently (default 1; 2–3 max on a laptop — each instance can spawn ~5 containers, and parallelism burns the subscription cap N× faster) |
 | `-k N` | Runs per instance (pass@k; default 1) |
 
@@ -234,8 +247,16 @@ edit this to `172.17.0.1:<port>` — while `rubric-judge.json` uses `127.0.0.1`
 ### Outputs
 
 - `eval_outputs/` — per-instance working dirs (trajectory, eval, harbor, logs). Regenerable; safe to delete between runs.
-- `argos_bundles/<uuid>/` — the deliverable milo bundles (trajectory + verifier + rubric). Wiped between fresh runs.
-- `<data-dir>/<uuid>/` — the same bundle staged flat into the publish clone (`milo-bench-samples` format), accumulating across runs; push manually from there. (Legacy `dataset/`+`trajectory/` split is staged only when no bundle exists, e.g. `RUBRIC_ENABLE=0`.)
+- `milo_bundles/<uuid>/` — the deliverable evaluation bundles (trajectory + verifier + rubric). Wiped between fresh runs.
+- `<data-dir>/<uuid>/` — the same bundle staged flat into the local staging directory (`milo-bench-samples` format), accumulating across runs; no git operations are performed — publish manually from there. (Legacy `dataset/`+`trajectory/` split is staged only when no bundle exists, e.g. `RUBRIC_ENABLE=0`.)
+
+Any single file ≥ 100 MiB is dropped from the staged copy (GitHub's hard file-size limit).
+
+> **Note on legacy names.** The bundle output dir (`milo_bundles/`), the default
+> staging dir (`../milo-bench-dataset`), and the on-disk bundle layout
+> (`milo-bench-samples` format) keep their original names: they are hardcoded in
+> `run_eval.sh` / `run_custom_eval.sh`. Renaming them in documentation alone
+> would break every command above.
 
 ## Rich Logging
 
@@ -267,7 +288,7 @@ Requirements:
 Run it with `gh`:
 
 ```bash
-gh workflow run run-eval.yml --repo milo-bench/benchmarks --ref main \
+gh workflow run run-eval.yml --repo Ethara-Ai/argos-harness --ref main \
   -f benchmark=swebench \
   -f sdk_ref=main \
   -f eval_limit=50 \
@@ -282,7 +303,7 @@ gh workflow run run-eval.yml --repo milo-bench/benchmarks --ref main \
 
 Inputs (forwarded to the SDK `run-eval.yml` workflow):
 
-- `benchmark`: Benchmark suite to run. Choices: `gaia`, `swebench`, `swtbench`, `commit0`. Default: `swebench`.
+- `benchmark`: Benchmark suite to run. Choices: `gaia`, `swebench`, `swtbench`, `commit0`, `swebenchmultimodal`. Default: `swebench`. (Multi-SWE-Bench is **not** dispatchable here — it runs through `run_eval.sh`, see above.)
 - `sdk_ref`: SDK commit, tag, or branch to evaluate. Default: `main`.
 - `eval_limit`: Number of instances to run. Choices: `1`, `50`, `200`, `500`. Default: `1`.
 - `model_ids`: Comma-separated model IDs (keys of `MODELS` in the SDK `.github/run-eval/resolve_model_config.py`). Empty uses the SDK default.
@@ -315,7 +336,7 @@ Uses a remote runtime API to provision containers in a cloud environment, enabli
 
 #### How Remote Runtime Works
 
-1. **Pre-build Agent Images**: Agent-server images must be pre-built for a specific SDK commit (SHA) and pushed to a public container registry (e.g., `ghcr.io/milo-bench/eval-agent-server`)
+1. **Pre-build Agent Images**: Agent-server images must be pre-built for a specific SDK commit (SHA) and pushed to a public container registry (e.g., `ghcr.io/openhands/eval-agent-server`)
 2. **Runtime API**: The remote workspace connects to a runtime API service (default: `https://runtime.eval.all-hands.dev`) that provisions containers on-demand
 3. **Image Resolution**: Before starting evaluation, the system verifies that the required image exists in the registry with the correct tag format: `{IMAGE}:{SDK_SHA}-{CUSTOM_TAG}{SUFFIX}`
 4. **Parallel Execution**: Each evaluation instance runs in its own isolated container, allowing for massive parallelization (e.g., 32+ concurrent workers)
@@ -325,9 +346,9 @@ Uses a remote runtime API to provision containers in a cloud environment, enabli
 1. **Pre-built Images**: Images must be built and pushed to a public registry
 
    - In this repository, add one of the following labels to a PR to trigger image builds:
-     - `build-swebench-50`: Build 50 images (quick testing)
-     - `build-swebench-200`: Build 200 images (medium testing)
-     - `build-swebench`: Build all images (full evaluation)
+     - Multi-SWE-Bench: `build-multiswebench-50` (50 images, quick testing), `build-multiswebench-200` (200 images, medium testing), `build-multiswebench` (all images, full evaluation)
+     - SWE-Bench: `build-swebench-50`, `build-swebench-200`, `build-swebench`
+   - Sibling workflows exist for the other suites (`build-gaia-images.yml`, `build-commit0-images.yml`, `build-swtbench-images.yml`, `build-swebenchmultimodal-images.yml`, `build-swegym-images.yml`, `build-swesmith-images.yml`)
    - Images are tagged with the SDK SHA from the `vendor/software-agent-sdk` submodule
 2. **Runtime API Key**: Set the `RUNTIME_API_KEY` environment variable
 
@@ -377,4 +398,17 @@ When evaluating a specific SDK version, you need to ensure the benchmarks code i
 
 ## Links
 
+- **Multi-SWE-Bench (paper)**: [arXiv:2504.02605](https://arxiv.org/abs/2504.02605) — *Multi-SWE-bench: A Multilingual Benchmark for Issue Resolving*
+- **Multi-SWE-Bench (GitHub)**: https://github.com/multi-swe-bench/multi-swe-bench
+- **Multi-SWE-Bench (dataset)**: https://huggingface.co/datasets/ByteDance-Seed/Multi-SWE-bench
+- **Multi-SWE-Bench (leaderboard)**: https://multi-swe-bench.github.io/
 - **SWE-Bench**: https://www.swebench.com/
+
+## Repo Docs
+
+- [`RUBRIC.md`](RUBRIC.md) — rubric authoring, judging, and anchoring internals
+- [`SCORE_MATH.md`](SCORE_MATH.md) — score computation details
+- [`AGENTS.md`](AGENTS.md) — engineering principles and dev setup for contributors
+- [`benchmarks/multiswebench/README.md`](benchmarks/multiswebench/README.md) — per-benchmark usage
+- [`benchmarks/multiswebench/BUGS.md`](benchmarks/multiswebench/BUGS.md) — known issues
+- [`CHANGE_LOG/`](CHANGE_LOG/) — reward changes, Dockerfile swaps, pre-run checklist
