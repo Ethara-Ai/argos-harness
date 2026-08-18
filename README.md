@@ -15,8 +15,6 @@ This harness currently wires up the `java`, `python`, `go`, and `c` tracks (sele
 | [GAIA](benchmarks/gaia/)                               | General AI assistant tasks requiring multi-step reasoning                                          | ✅ Active      |
 | [Commit0](benchmarks/commit0/)                         | Python function implementation tasks with unit tests                                               | ✅ Active      |
 | [OpenAgentSafety](benchmarks/openagentsafety/)         | AI agent safety evaluation in workplace scenarios with NPC interactions                            | ✅ Active      |
-| [SWE-Gym](benchmarks/swegym/)                          | Docker image builds only (training-data generation); no infer/eval entrypoint                      | 🧱 Images only |
-| [SWE-Smith](benchmarks/swesmith/)                      | Docker image builds only (training-data generation); no infer/eval entrypoint                      | 🧱 Images only |
 
 See the individual benchmark directories for detailed usage instructions.
 
