@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     # Default to 0.0.0.0 so the agent-server running inside the eval Docker
     # container can reach the bridge on the host (via the docker0 gateway on
     # Linux/EC2, or host.docker.internal on macOS Docker Desktop).
-    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--host", default="0.0.0.0")  # nosec B104 - bridge must bind all interfaces so containers reach it via the docker0 gateway
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--log-level", default="info")
     p.add_argument(
