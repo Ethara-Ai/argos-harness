@@ -138,3 +138,10 @@ members = [
   "vendor/software-agent-sdk/openhands-workspace",
   "vendor/software-agent-sdk/openhands-agent-server",
 ]
+[tool.bandit]
+# B108 in assay/deterministic.py is a false positive: SCRATCH_ROOTS and related
+# constants are detection heuristics for spotting scratch/temp paths in agent
+# trajectories (anti-reward-hacking), NOT hardcoded temp-file creation. The file
+# is fingerprinted by the rescoring-determinism test (assay/fingerprint.py
+# _SCORER_SOURCES), so it must not carry inline # nosec comments.
+skips = ["B108"]

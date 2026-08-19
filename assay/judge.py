@@ -399,7 +399,7 @@ def call(
         proxy, data=json.dumps(body).encode(), headers=headers, method="POST"
     )
     try:
-        with urllib.request.urlopen(req, timeout=240) as r:
+        with urllib.request.urlopen(req, timeout=240) as r:  # nosec B310 - internally-constructed bridge URL, not user input
             doc = json.loads(r.read())
         if doc.get("type") == "error":
             msg = doc["error"].get("message", "")

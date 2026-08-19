@@ -73,7 +73,7 @@ def bedrock_judge(
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 - internally-constructed bridge URL, not user input
             doc = json.loads(resp.read())
         return _bedrock_text(doc)
 
@@ -111,7 +111,7 @@ def openai_judge(
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 - internally-constructed bridge URL, not user input
             doc = json.loads(resp.read())
         return (doc.get("choices") or [{}])[0].get("message", {}).get("content", "")
 
