@@ -11,6 +11,10 @@ The <issue_description> above usually describes MANY separate issues, not one. Y
 
 I've already taken care of all changes to any of the test files described in the <issue_description>. This means you MUST NOT modify the testing logic or any of the tests in any way. This prohibition covers not only `_test` files but also test helper packages, fixtures, fakes, stubs, mocks, and example or integration applications that exist to support tests. If a change appears to require editing a test file, that is a signal your change is wrong — fix the non-test code instead.
 
+The prohibition is by path, not by file type. Do not write to anything inside a test directory — for example `tests/`, `test/`, `e2e/`, `testdata/`, or any path nested beneath one — even when the file is a README, a markdown document, a diagram, or a config that plainly cannot affect a test result. A submission that touches any path under the graded test tree is rejected in full and scores nothing, however correct the rest of the work is. If an issue on your checklist asks for a change under such a path, mark it BLOCKED with that reason and move to the next issue.
+
+Leave repository plumbing alone on the same terms unless an issue names the file directly: CI workflow definitions, issue and pull-request templates, Helm charts, container manifests, and dependency lockfiles.
+
 Also the development {{ language|title }} environment is already set up for you (i.e., all dependencies are already installed). Do not download or install a different, newer, or "fixed" version of the package(s) under test, and do not fetch any external source, release, or patch to obtain the solution. Reinstalling an already-declared dependency to repair a broken environment is fine.
 
 Your task is to make thorough, complete changes to non-test files in the /workspace directory that address EVERY issue in the <issue_description>. Do not optimise for a small diff — breadth of coverage across all the issues matters more than the size of any individual change. At the same time, scope each edit to what its issue actually calls for; do not refactor unrelated code for style.
