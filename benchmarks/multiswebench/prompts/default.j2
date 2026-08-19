@@ -7,52 +7,60 @@ I've uploaded a {{ language|title }} code repository in the directory {{ workspa
 {{ instance.problem_statement }}
 </issue_description>
 
-Can you help me implement the necessary changes to the repository so that the requirements specified in the <issue_description> are met?
+The <issue_description> above usually describes MANY separate issues, not one. Your job is to implement the changes required by EVERY issue it contains — not just the one that looks most tractable, most self-contained, or easiest to identify. There is no single "real" issue hidden among the others; treat all of them as in scope.
 
-I've already taken care of all changes to any of the test files described in the <issue_description>. This means you MUST NOT modify the testing logic or any of the tests in any way!
+I've already taken care of all changes to any of the test files described in the <issue_description>. This means you MUST NOT modify the testing logic or any of the tests in any way. This prohibition covers not only `_test` files but also test helper packages, fixtures, fakes, stubs, mocks, and example or integration applications that exist to support tests. If a change appears to require editing a test file, that is a signal your change is wrong — fix the non-test code instead.
 
 Also the development {{ language|title }} environment is already set up for you (i.e., all dependencies are already installed). Do not download or install a different, newer, or "fixed" version of the package(s) under test, and do not fetch any external source, release, or patch to obtain the solution. Reinstalling an already-declared dependency to repair a broken environment is fine.
 
-Your task is to make the minimal changes to non-test files in the /workspace directory to ensure the <issue_description> is satisfied.
+Your task is to make thorough, complete changes to non-test files in the /workspace directory that address EVERY issue in the <issue_description>. Do not optimise for a small diff — breadth of coverage across all the issues matters more than the size of any individual change. At the same time, scope each edit to what its issue actually calls for; do not refactor unrelated code for style.
+
 Solve this using only the code already present in the repository; do not retrieve the reference solution from any external source (do not clone, fetch, or pull the upstream repository or a mirror; do not download or install a different, newer, or "fixed" version of the package(s) under test; do not fetch pull-request or commit diffs; and do not read post-baseline git history, tags, stashes, or remotes to locate the change). A solution derived from a retrieved reference is invalid and will not be scored.
 
-Follow these steps to resolve the issue:
-1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
+Step 0 — Enumerate before you edit.
+Read the <issue_description> from beginning to end and write out a numbered checklist of every distinct issue it describes (one entry per `## Issue N` header). State the total explicitly, for example: "Checklist: 34 issues found." Do not begin editing until this checklist exists. Do not attempt to guess which issue is "the important one" — you cannot tell, and guessing is the single most common way this task is failed.
+
+Then work the checklist in order. For each issue, announce which one you are on ("Working on issue N of M: <short title>") and carry out the following:
+
+1. Explore the repo to locate the code responsible for this issue. On the first issue, take extra time to familiarise yourself with the overall structure.
 {% if language == 'python' %}
-2. Create a script to reproduce the error and execute it with `python <filename.py>` using the BashTool, to confirm the error.
+2. Create a script to reproduce the behavior described and execute it with `python <filename.py>` using the BashTool, to confirm it.
 {% elif language == 'java' %}
-2. Create a Java class to reproduce the error and execute it by first compiling with `javac <classname>.java` and then running with `java <classname>` using the BashTool, to confirm the error
+2. Create a Java class to reproduce the behavior described and execute it by first compiling with `javac <classname>.java` and then running with `java <classname>` using the BashTool, to confirm it.
 {% elif language == 'go' %}
-2. Create a script or a function to reproduce the error and execute it with `go run <filename.go>` using the BashTool, to confirm the error.
+2. Create a script or a function to reproduce the behavior described and execute it with `go run <filename.go>` using the BashTool, to confirm it.
 {% elif language == 'c' %}
-2. Create a script to reproduce the error by compiling your C code (for example, using `gcc <filename.c> -o <executable>`) and then running the executable using the BashTool, to confirm the error.
+2. Create a script to reproduce the behavior described by compiling your C code (for example, using `gcc <filename.c> -o <executable>`) and then running the executable using the BashTool, to confirm it.
 {% elif language == 'cpp' %}
-2. Create or adapt a small executable (e.g., a main file or a test driver) to reproduce the issue. Build and run it (for example, by using `g++ -o reproduce reproduce.cpp && ./reproduce` via the BashTool) to confirm the error.
+2. Create or adapt a small executable (e.g., a main file or a test driver) to reproduce the behavior described. Build and run it (for example, `g++ -o reproduce reproduce.cpp && ./reproduce` via the BashTool) to confirm it.
 {% elif language == 'javascript' %}
-2. Create a script to reproduce the error and execute it with `node <filename.js>` using the BashTool, to confirm the error.
+2. Create a script to reproduce the behavior described and execute it with `node <filename.js>` using the BashTool, to confirm it.
 {% elif language == 'typescript' %}
-2. Create a script to reproduce the error and execute it with `ts-node <filename.ts>` using the BashTool, to confirm the error.
+2. Create a script to reproduce the behavior described and execute it with `ts-node <filename.ts>` using the BashTool, to confirm it.
 {% elif language == 'rust' %}
-2. Create a reproduction script (or binary) that triggers the error and execute it with `cargo run --bin <filename>` using the BashTool, to confirm the error.
+2. Create a reproduction script (or binary) that triggers the behavior described and execute it with `cargo run --bin <filename>` using the BashTool, to confirm it.
 {% else %}
-2. Create a script to reproduce the error and execute it using the appropriate command for {{ language }}, to confirm the error.
+2. Create a script to reproduce the behavior described and execute it using the appropriate command for {{ language }}, to confirm it.
 {% endif %}
-3. Edit the sourcecode of the repo to resolve the issue.
-4. Rerun your reproduce script{% if language == 'java' %} or class{% endif %} and confirm that the error is fixed!
-5. Think about edgecases, add comprehensive tests for them in your reproduce {% if language == 'java' %}class or {% endif %}script, and run them to make sure your fix handles {% if language == 'java' %}these cases{% else %}them{% endif %} as well.
+3. Edit the source code of the repo to make the change this issue calls for.
+4. Rerun your reproduction{% if language == 'java' %} class{% endif %} and check the behavior.
+5. Build or compile every package you touched and confirm it compiles cleanly. A change that does not compile scores nothing, and it can break packages that were passing before you started. If you change a function signature, an interface, or a type, find and update every caller and every implementer of it in non-test code before moving on.
+6. Think about edge cases, add checks for them in your reproduction {% if language == 'java' %}class or {% endif %}script, and run them to see how your change handles {% if language == 'java' %}these cases{% else %}them{% endif %}.
+7. Mark this issue DONE on your checklist, then move to the next one. If an issue genuinely cannot be worked — because it is a pre-existing environment failure unrelated to your changes, or it would require retrieving external code — mark it BLOCKED, state the specific reason in one sentence, and move to the next issue. A blocked issue never ends the session; it only ends work on that issue.
+
+Do not stop early. Finishing after addressing only one issue, or only a handful, is the primary failure mode on this task — work every item on the checklist, not just the first tractable one. Do not pad with busywork either: every step should be locating, editing, building, or testing real code for a real checklist item. Do not call the `finish` tool until every item on your checklist is marked either DONE or BLOCKED with a stated reason. When you finish, report the final tally: how many issues you addressed, and which ones you marked BLOCKED and why.
 {% if instance.base_commit %}
-6. Once you are done with the initial implementation, please carefully re-read the problem description and review your own changes with `git diff`. Do you think that the issue has been completely and comprehensively solved? Write tests to check the correctness of the solution, specifically focusing on tests that may point out any remaining problems that are not yet solved. Run all of the tests in the repo and check if any of them fail, and if they do fix the code. Repeat this process of carefully reading the problem description and current implementation, testing, and fixing any problems until you are confident that the current implementation is correct. Find and run any tests in the repo that are related to:
-   - The issue you are fixing
+Once you have made a first pass over the whole checklist, carefully re-read the problem description and review your own changes with `git diff`. For each issue, check whether the change you made matches what it asked for. Write tests to check the correctness of your changes, specifically focusing on tests that may point out remaining gaps. Run the tests in the repo related to what you changed and check whether any fail — pay particular attention to tests that were passing before your changes and are failing now, since breaking working code costs more than leaving an issue unaddressed. Repeat this process of re-reading, testing, and adjusting until you have attempted every checklist item and the packages you touched build cleanly. Find and run any tests in the repo that are related to:
+   - Each issue on your checklist
    - The files you modified
    {% if language == 'java' %}
    - The functions or classes you changed
    {% else %}
    - The functions you changed
    {% endif %}
-   Make sure all these tests pass with your changes.
 {% endif %}
 
-Your thinking should be thorough and so it's fine if it's very long.
+Your thinking should be thorough and so it's fine if it's very long. Think carefully before each edit about which issue it serves and what else it might break.
 
 {% if use_hint_text and instance.hints_text %}
 <hints>
