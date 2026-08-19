@@ -28,8 +28,10 @@ from typing import Iterable, Sequence
 __all__ = [
     "COUNCIL",
     "JudgePlan",
+    "add_usage",
     "already_done",
     "call",
+    "extract_usage",
     "judges_for_subject",
     "model_family",
     "plan_calls",
@@ -385,6 +387,57 @@ def extract_text(doc: dict) -> str:
     return "\n".join(c.get("text", "") for c in (doc.get("content") or []))
 
 
+def extract_usage(doc: dict, headers=None) -> dict:
+    """Token counts and cost for one response, normalized across API shapes.
+
+    Anthropic keeps cache reads/writes out of ``input_tokens``; OpenAI folds
+    cached tokens into ``prompt_tokens``. Both are recorded as reported, under
+    one key set. Cost comes from the bridge's x-litellm-response-cost header
+    (proxy/claude_code_bridge computes it from the usage block); absent header
+    means cost 0, not a guess.
+    """
+    u = doc.get("usage") or {}
+    if not u:
+        return {}
+    if "input_tokens" in u:  # Anthropic messages / OpenAI Responses
+        cache_read = u.get("cache_read_input_tokens")
+        if cache_read is None:
+            cache_read = (u.get("input_tokens_details") or {}).get("cached_tokens")
+        usage = {
+            "input_tokens": u.get("input_tokens") or 0,
+            "output_tokens": u.get("output_tokens") or 0,
+            "cache_read_tokens": cache_read or 0,
+            "cache_write_tokens": u.get("cache_creation_input_tokens") or 0,
+        }
+    else:  # OpenAI chat completions
+        usage = {
+            "input_tokens": u.get("prompt_tokens") or 0,
+            "output_tokens": u.get("completion_tokens") or 0,
+            "cache_read_tokens": (u.get("prompt_tokens_details") or {}).get(
+                "cached_tokens"
+            )
+            or 0,
+            "cache_write_tokens": 0,
+        }
+    cost = 0.0
+    if headers is not None:
+        raw = headers.get("x-litellm-response-cost")
+        try:
+            cost = float(raw) if raw else 0.0
+        except (TypeError, ValueError):
+            cost = 0.0
+    usage["cost_usd"] = cost
+    return usage
+
+
+def add_usage(total: dict, usage: dict) -> dict:
+    """Accumulate one call's usage into a running total (throttled retries and
+    thinking-exhaustion retries still consume tokens, so every attempt counts)."""
+    for k, v in (usage or {}).items():
+        total[k] = total.get(k, 0) + (v or 0)
+    return total
+
+
 def call(
     proxy: str,
     model: str,
@@ -392,8 +445,8 @@ def call(
     question: str,
     cached: str = "",
     max_tokens: int = MAX_TOKENS,
-) -> tuple[str, str, int | None, int]:
-    """Return (text, error, retry_after, status). status 429 means throttled."""
+) -> tuple[str, str, int | None, int, dict]:
+    """Return (text, error, retry_after, status, usage). status 429 = throttled."""
     body, headers = build_request(proxy, model, system, question, cached, max_tokens)
     req = urllib.request.Request(
         proxy, data=json.dumps(body).encode(), headers=headers, method="POST"
@@ -401,10 +454,12 @@ def call(
     try:
         with urllib.request.urlopen(req, timeout=240) as r:  # nosec B310 - internally-constructed bridge URL, not user input
             doc = json.loads(r.read())
+            resp_headers = r.headers
         if doc.get("type") == "error":
             msg = doc["error"].get("message", "")
             status = 429 if "rate" in msg.lower() else 400
-            return "", msg[:160], _retry_after(doc), status
+            return "", msg[:160], _retry_after(doc), status, {}
+        usage = extract_usage(doc, resp_headers)
         text = extract_text(doc)
         if not text.strip():
             # Sonnet emits a thinking block first and can spend the whole budget
@@ -415,17 +470,24 @@ def call(
                 f"empty completion (stop_reason={doc.get('stop_reason')})",
                 None,
                 200,
+                usage,
             )
-        return text, "", None, 200
+        return text, "", None, 200, usage
     except urllib.error.HTTPError as e:
         raw = e.read()
         try:
             doc = json.loads(raw)
         except ValueError:
             doc = {}
-        return "", f"HTTP {e.code} {raw[:120]!r}", _retry_after(doc, e.headers), e.code
+        return (
+            "",
+            f"HTTP {e.code} {raw[:120]!r}",
+            _retry_after(doc, e.headers),
+            e.code,
+            {},
+        )
     except Exception as exc:  # noqa: BLE001
-        return "", f"{type(exc).__name__}: {exc}", None, 0
+        return "", f"{type(exc).__name__}: {exc}", None, 0, {}
 
 
 class SubscriptionCapped(RuntimeError):
@@ -467,13 +529,15 @@ def _error_doc(err: str) -> dict:
 
 def call_with_backoff(
     proxy: str, model: str, system: str, question: str, cached: str, deadline: float
-) -> tuple[str, str]:
+) -> tuple[str, str, dict]:
     budget, retried_for_thinking = MAX_TOKENS, False
+    spent: dict = {}
     while True:
         _pace()
-        raw, err, retry_after, status = call(
+        raw, err, retry_after, status, usage = call(
             proxy, model, system, question, cached, budget
         )
+        add_usage(spent, usage)
         if is_thinking_exhaustion(err) and not retried_for_thinking:
             retried_for_thinking, budget = True, MAX_TOKENS_RETRY
             continue
@@ -492,13 +556,13 @@ def call_with_backoff(
             )
         if raw:
             _PACE["gap"] = max(MIN_GAP, _PACE["gap"] * 0.9)
-            return raw, ""
+            return raw, "", spent
         if status != 429 and "rate" not in err.lower():
-            return "", err
+            return "", err, spent
         _PACE["gap"] = min(MAX_GAP, _PACE["gap"] * 1.7)
         wait = max(retry_after or 0, _PACE["gap"]) + random.uniform(0, 5)
         if time.time() + wait > deadline:
-            return "", err or "deadline exceeded under throttle"
+            return "", err or "deadline exceeded under throttle", spent
         time.sleep(wait)
 
 

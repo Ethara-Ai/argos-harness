@@ -267,6 +267,51 @@ def _build_error_response(classified: ClassifiedError) -> JSONResponse:
     return JSONResponse(body, status_code=classified.status_code, headers=headers)
 
 
+# Anthropic API list prices per million tokens, keyed by model-id substring
+# (first match wins, so longer/more-specific keys come first). Used to compute
+# the x-litellm-response-cost header consumers (assay judge usage records)
+# read for billing telemetry. Cache pricing: reads 0.1x input, 5m writes
+# 1.25x input, 1h writes 2x input.
+_MODEL_PRICES_PER_MTOK: list[tuple[str, float, float]] = [
+    ("claude-fable-5", 10.0, 50.0),
+    ("claude-mythos", 10.0, 50.0),
+    ("claude-opus", 5.0, 25.0),
+    ("claude-sonnet", 3.0, 15.0),
+    ("claude-haiku", 1.0, 5.0),
+]
+
+
+def _response_cost_usd(doc: dict[str, Any]) -> Union[float, None]:
+    """Notional API-list-price cost of one response, from its usage block.
+
+    Subscription (OAuth) traffic has no metered cost; this is the equivalent
+    API price so downstream accounting has a number to work with. Returns
+    None when the model is unknown or there is no usage to price.
+    """
+    model = str(doc.get("model") or "")
+    usage = doc.get("usage") or {}
+    if not model or not usage:
+        return None
+    for needle, p_in, p_out in _MODEL_PRICES_PER_MTOK:
+        if needle in model:
+            break
+    else:
+        return None
+    cache = usage.get("cache_creation") or {}
+    write_5m = cache.get("ephemeral_5m_input_tokens")
+    write_1h = cache.get("ephemeral_1h_input_tokens") or 0
+    if write_5m is None:
+        write_5m = usage.get("cache_creation_input_tokens") or 0
+    cost = (
+        (usage.get("input_tokens") or 0) * p_in
+        + (usage.get("output_tokens") or 0) * p_out
+        + (usage.get("cache_read_input_tokens") or 0) * (0.1 * p_in)
+        + write_5m * (1.25 * p_in)
+        + write_1h * (2.0 * p_in)
+    ) / 1_000_000
+    return cost
+
+
 async def _forward_non_streaming(
     provider: ProviderLike,
     request_method: str,
@@ -332,6 +377,12 @@ async def _forward_non_streaming(
                 for k, v in upstream.headers.items()
                 if k.lower() not in STRIP_HEADERS_OUT
             }
+            try:
+                cost = _response_cost_usd(json.loads(upstream.content))
+                if cost is not None:
+                    resp_headers["x-litellm-response-cost"] = f"{cost:.10f}"
+            except (ValueError, TypeError):
+                pass
             return Response(
                 content=upstream.content,
                 status_code=upstream.status_code,

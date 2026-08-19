@@ -101,7 +101,7 @@ def _bridge_call(
     deadline = time.monotonic() + deadline_s
     last_err = "no attempt"
     while time.monotonic() < deadline:
-        text, err, retry_after, status = assay_judge.call(
+        text, err, retry_after, status, _usage = assay_judge.call(
             proxy, bare_model, system, user, "", max_tokens
         )
         if text.strip():

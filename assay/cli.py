@@ -450,7 +450,7 @@ def cmd_judge(args) -> int:
             item = next(i for i in items if i.id == item_id)
             evidence, question = build_prompt_parts(item, packet)
             try:
-                raw, err = call_with_backoff(
+                raw, err, usage = call_with_backoff(
                     _endpoint(args, member),
                     ALL_SEATS[member],
                     JUDGE_SYSTEM,
@@ -476,6 +476,7 @@ def cmd_judge(args) -> int:
                             "item_id": item_id,
                             "completion": raw,
                             "error": err,
+                            "usage": usage,
                             FINGERPRINT_KEY: fingerprint,
                         }
                     )
