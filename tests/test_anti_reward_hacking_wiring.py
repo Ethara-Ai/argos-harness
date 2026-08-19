@@ -66,23 +66,39 @@ class TestRunInferFullBlockWiring:
         assert '"LLM_DIRECT_PORT"' in run_infer_src
 
 
-class TestRunEvalSectionBDisableGuards:
+class TestRunEvalNoGitPublishing:
+    """run_eval.sh must never fetch, commit, or push on its own.
+
+    This was previously enforced by three `if false && ... # DISABLED: ...`
+    guards around the auto fetch/pull-rebase, the per-task commit, and the
+    final push. Those blocks were removed in favour of local-only staging, so
+    the invariant is now enforced structurally: the operations are absent
+    rather than switched off, which no longer allows re-enabling by flipping a
+    literal. Read-only plumbing such as `git rev-parse` stays allowed.
+    """
+
     @pytest.mark.parametrize(
-        "guard_pattern",
-        [
-            r"if false &&.*NO_PUSH.*per request",
-            r"if false &&.*DATA_REPO_ROOT.*per request",
-            r"elif false.*per request",
-        ],
+        "operation",
+        ["push", "fetch", "pull", "clone", "commit"],
     )
-    def test_guard_present(self, run_eval_src, guard_pattern):
-        assert re.search(guard_pattern, run_eval_src), (
-            f"Expected guard pattern not found: {guard_pattern}"
+    def test_no_git_write_or_network_operation(self, run_eval_src, operation):
+        matches = re.findall(
+            rf"^[^#\n]*\bgit\b[^\n]*\b{operation}\b", run_eval_src, re.M
+        )
+        assert not matches, (
+            f"run_eval.sh must not invoke 'git {operation}'; found: {matches}"
         )
 
-    def test_three_distinct_disabled_sentinels(self, run_eval_src):
-        count = len(re.findall(r"DISABLED:.*per request", run_eval_src))
-        assert count == 3, f"Expected 3 DISABLED sentinels, found {count}"
+    def test_no_disabled_publishing_leftovers(self, run_eval_src):
+        leftovers = re.findall(r"(?:if|elif) false\b[^\n]*", run_eval_src)
+        assert not leftovers, (
+            f"Publishing blocks must be removed, not disabled in place: {leftovers}"
+        )
+
+    def test_staging_is_declared_local_only(self, run_eval_src):
+        assert re.search(r"no git operations are performed", run_eval_src), (
+            "run_eval.sh should state that staging performs no git operations"
+        )
 
 
 class TestRunEvalSectionC3EnvDepInjectWiring:
