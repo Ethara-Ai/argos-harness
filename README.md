@@ -210,6 +210,35 @@ It runs alongside the Claude bridge, so you can mix providers: Codex trajectory
 + Claude rubric author/judge is the intended "new delivery path". Only
 `gpt-5.6-sol` is accepted by the ChatGPT-account Codex backend.
 
+### Finance usage reporting (optional, one-time)
+
+Every `run_eval.sh` dataset posts one trajectory-usage record (trajectory
+tokens + notional cost, judge tokens + cost) to the Finance API as its final
+step, after rubric judging and staging. To enable it on a fresh clone, create
+`.env` at the repo root:
+
+```bash
+FINANCE_API_BASE=https://projects-stage.ethara.ai/api/v1
+FINANCE_PROJECT_ID=ARGOS
+```
+
+Without that file the step degrades to a dry-run: the payload is written to a
+`finance_usage.json` sidecar next to the run, nothing is POSTed, and the
+pipeline is never failed by it. Behavior notes:
+
+- `subscription_id` is auto-resolved from the machine's Claude Code OAuth
+  login (the same login the bridge uses). On hosts that authenticate
+  differently, set `FINANCE_SUBSCRIPTION_ID=...` in `.env` instead.
+- Optional `.env` overrides: `FINANCE_API_TOKEN` (bearer auth),
+  `FINANCE_AUTH_HEADER`, `FINANCE_PROJECT_TYPE`, `FINANCE_TEAM_TYPE`,
+  `FINANCE_BUDGET_TYPE` (`RFP`/`Production`), `FINANCE_RFP_SUB_TYPE`,
+  `FINANCE_PRODUCTION_MODE`.
+- Sidecars mark `posted: true`; re-runs skip already-posted runs. To re-post
+  (e.g. after a rubric re-judge), run `uv run python
+  scripts/finance_report.py --force` with the run's `--run-base`, `--uuid`,
+  `--instance-id`, and `--bundle` args.
+- `FINANCE_REPORT_DISABLE=1` on the run command turns the step off entirely.
+
 ### The run
 
 ```bash
