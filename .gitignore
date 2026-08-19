@@ -213,9 +213,6 @@ workspace/
 # LLM configuration directory (contains API keys and sensitive configs)
 .llm_config/*
 !.llm_config/example.json
-!.llm_config/claude-code.json
-!.llm_config/rubric-judge.json
-!.llm_config/codex.json
 
 # Evaluation outputs
 eval_outputs/
