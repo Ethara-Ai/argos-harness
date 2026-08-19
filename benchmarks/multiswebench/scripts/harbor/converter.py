@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import shutil
@@ -630,6 +631,32 @@ def build_atif_trajectory(
             "reasoning_tokens": int(tu.get("reasoning_tokens") or 0),
             "cache_write_tokens": int(tu.get("cache_write_tokens") or 0),
         }
+
+    # Class-B guard: if the run has ActionEvents but not one of their
+    # llm_response_ids joins to token_usages, every per-step token count comes
+    # out zero while the bundle still looks structurally healthy (observed in
+    # delivered bundle 0ae03990, batch 189b37e). Partial coverage is normal;
+    # a total join loss is not. Strict by default — the conversion fails so a
+    # corrupted-but-plausible bundle can never ship silently. Set
+    # HARBOR_STRICT_METRICS=0 to downgrade to a warning (debugging, or
+    # deliberate reprocessing of known-broken historical runs).
+    action_rids = [
+        e["llm_response_id"]
+        for e in history
+        if isinstance(e, dict)
+        and e.get("kind") == "ActionEvent"
+        and isinstance(e.get("llm_response_id"), str)
+        and e["llm_response_id"]
+    ]
+    if action_rids and not any(r in metrics_by_response for r in action_rids):
+        msg = (
+            f"0 of {len(action_rids)} action events matched token_usages by "
+            "llm_response_id; per-step token counts will all be zero "
+            "(metrics attribution lost)"
+        )
+        if os.environ.get("HARBOR_STRICT_METRICS") != "0":
+            raise ValueError(f"[converter] metrics-attribution: {msg}")
+        sys.stderr.write(f"[converter] WARN metrics-attribution: {msg}\n")
 
     latency_by_response: dict[str, float] = {}
     for lat in response_latencies or []:

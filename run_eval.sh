@@ -346,7 +346,7 @@ verify_github_token_and_identity() {
     echo "Publish: verifying GitHub token from ${GIT_TOKEN_SRC}..."
 
     local user_body user_code
-    user_body="$(mktemp "${TMPDIR:-/tmp}/gh_user.XXXXXX.json")"
+    user_body="$(mktemp "${TMPDIR:-/tmp}/gh_user.XXXXXX")"
     user_code="$(curl -sS -o "$user_body" -w '%{http_code}' \
         --max-time 10 \
         -H "Authorization: token ${GIT_TOKEN}" \
@@ -393,7 +393,7 @@ PYSCRIPT
     fi
 
     local repo_body repo_code
-    repo_body="$(mktemp "${TMPDIR:-/tmp}/gh_repo.XXXXXX.json")"
+    repo_body="$(mktemp "${TMPDIR:-/tmp}/gh_repo.XXXXXX")"
     repo_code="$(curl -sS -o "$repo_body" -w '%{http_code}' \
         --max-time 10 \
         -H "Authorization: token ${GIT_TOKEN}" \
@@ -677,7 +677,9 @@ RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/run_eval_results.XXXXXX")"
 mk_temp_llm_config() {
     local src="$1" new_base="$2"
     local tmp
-    tmp="$(mktemp "${TMPDIR:-/tmp}/llm_config_headroom.XXXXXX.json")" || return 1
+    # No suffix after the X's: BSD/macOS mktemp only substitutes trailing X's,
+    # so a ".json" suffix makes it use the literal name (fails on 2nd call).
+    tmp="$(mktemp "${TMPDIR:-/tmp}/llm_config_rewrite.XXXXXX")" || return 1
     if ! python3 - "$src" "$tmp" "$new_base" <<'PYSCRIPT'
 import json, sys
 src, dst, base = sys.argv[1:4]
@@ -834,6 +836,31 @@ if [[ -n "$ECR_PREFIX" ]]; then
     fi
 fi
 
+# Platform-aware bridge base_url rewrite. A committed .llm_config file can only
+# encode one platform's bridge host, and both directions break:
+#   - 172.17.x.x (Linux docker0 gateway) does not exist on macOS Docker Desktop
+#   - host.docker.internal is a Docker Desktop name; plain Linux Docker does not
+#     resolve it (agent containers get no --add-host), and this harness's
+#     containers always run on the default bridge network, so 172.17.0.1 is the
+#     gateway there.
+# Rewrite into a temp config (mk_temp_llm_config) so committed files stay put.
+# LLM_CONFIG (not just RUNTIME_LLM_CONFIG) is reassigned so the headroom
+# upstream and the metadata.json sidecar see the reachable URL too.
+_os="$(uname -s)"
+_cfg_base="$(python3 -c "import json; print(json.load(open('${LLM_CONFIG}')).get('base_url',''))" 2>/dev/null)"
+_new_base=""
+if [[ "$_os" == "Darwin" && "$_cfg_base" =~ ^http://172\.17\. ]]; then
+    _new_base="$(printf '%s' "$_cfg_base" | sed -E 's#^http://172\.17\.[0-9]+\.[0-9]+#http://host.docker.internal#')"
+elif [[ "$_os" == "Linux" && "$_cfg_base" =~ ^http://host\.docker\.internal ]]; then
+    _new_base="${_cfg_base/host.docker.internal/172.17.0.1}"
+fi
+if [[ -n "$_new_base" ]]; then
+    PLATFORM_TEMP_CFG="$(mk_temp_llm_config "$LLM_CONFIG" "$_new_base")" || {
+        echo "ERROR: could not materialize temp LLM config for the platform base_url rewrite"; exit 1; }
+    LLM_CONFIG="$PLATFORM_TEMP_CFG"
+    echo "platform(${_os}): rewrote LLM base_url ${_cfg_base} -> ${_new_base} (temp config: $PLATFORM_TEMP_CFG)"
+fi
+
 RUNTIME_LLM_CONFIG="$LLM_CONFIG"
 _headroom_fallback_to_none() {
     local reason="$1"
@@ -889,6 +916,7 @@ fi
 _cleanup_compression() {
     stop_headroom_proxy
     [[ -n "${HEADROOM_TEMP_CFG:-}" && -f "$HEADROOM_TEMP_CFG" ]] && rm -f "$HEADROOM_TEMP_CFG"
+    [[ -n "${PLATFORM_TEMP_CFG:-}" && -f "$PLATFORM_TEMP_CFG" ]] && rm -f "$PLATFORM_TEMP_CFG"
 }
 trap _cleanup_compression EXIT
 
