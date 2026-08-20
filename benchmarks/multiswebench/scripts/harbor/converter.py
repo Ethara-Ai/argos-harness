@@ -265,7 +265,7 @@ def map_difficulty(
 
 
 def to_ecr_image(ecr_prefix: str, org: str, repo: str, pr: int) -> str:
-    return f"{ecr_prefix}/{org}_m_{repo}:pr-{pr}"
+    return f"{ecr_prefix}/{org}__{repo}:pr-{pr}"
 
 
 def get_resource_config(language: str, repo: str) -> dict[str, Any]:
