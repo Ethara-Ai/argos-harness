@@ -1207,7 +1207,7 @@ print(d.get('org',''), d.get('repo',''), d.get('number',''), d['uuid'])
         case "$(uname -m)" in aarch64|arm64) HOST_ARCH=arm64 ;; *) HOST_ARCH=amd64 ;; esac
         if [[ -n "$ECR_PREFIX" ]]; then
             local ECR_IMAGE
-            ECR_IMAGE="$(echo "${ECR_PREFIX}/${DS_ORG}_m_${DS_REPO}:${EXPECTED_IMAGE_TAG}" | tr '[:upper:]' '[:lower:]')"
+            ECR_IMAGE="$(echo "${ECR_PREFIX}/${DS_ORG}__${DS_REPO}:${EXPECTED_IMAGE_TAG}" | tr '[:upper:]' '[:lower:]')"
             log "Pulling ECR image: $ECR_IMAGE (platform linux/${HOST_ARCH})"
             if docker pull --platform "linux/${HOST_ARCH}" "$ECR_IMAGE" >/dev/null 2>&1; then
                 docker tag "$ECR_IMAGE" "$HARNESS_IMAGE_NAME"; got=true
