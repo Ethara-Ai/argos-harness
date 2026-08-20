@@ -195,20 +195,26 @@ def test_keyboard_interrupt_cleanup():
             process.kill()
             process.wait()
 
-        # Give a moment for cleanup
-        time.sleep(2)
+        def _surviving_workers() -> list[int]:
+            survivors = []
+            for worker in python_workers_before:
+                try:
+                    if psutil.pid_exists(worker.pid):
+                        proc = psutil.Process(worker.pid)
+                        # Check if it's still the same process (not reused PID)
+                        if proc.create_time() == worker.create_time():
+                            survivors.append(worker.pid)
+                except psutil.NoSuchProcess:
+                    pass  # Process is gone, which is what we want
+            return survivors
 
-        # Check if all worker processes are gone
-        remaining_workers = []
-        for worker in python_workers_before:
-            try:
-                if psutil.pid_exists(worker.pid):
-                    proc = psutil.Process(worker.pid)
-                    # Check if it's still the same process (not reused PID)
-                    if proc.create_time() == worker.create_time():
-                        remaining_workers.append(worker.pid)
-            except psutil.NoSuchProcess:
-                pass  # Process is gone, which is what we want
+        # Poll for cleanup rather than sleeping a fixed interval: teardown is
+        # scheduler-bound, so a loaded host can exceed any constant we pick.
+        cleanup_deadline = time.time() + 15
+        remaining_workers = _surviving_workers()
+        while remaining_workers and time.time() < cleanup_deadline:
+            time.sleep(0.25)
+            remaining_workers = _surviving_workers()
 
         print("\n=== Results ===")
         print(f"Worker processes before: {len(python_workers_before)}")
