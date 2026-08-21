@@ -552,22 +552,54 @@ else
     fi
 fi
 
-# ── Refresh multi-swe-bench to latest main (targeted upgrade) ────────────────
-# pyproject.toml pins multi-swe-bench to `branch = "main"`; this picks up any
-# new commits without manual lockfile bumps. Only this one package is upgraded;
-# every other dep stays at its locked version. Falls back to cached install on
-# network/resolution failure; hard-fails only if the environment is unrecoverable.
-echo "Refreshing multi-swe-bench to latest main..."
-if (cd "$SCRIPT_DIR" && uv lock --upgrade-package multi-swe-bench >/dev/null 2>&1 && uv sync >/dev/null 2>&1); then
-    echo "  ok: multi-swe-bench refreshed"
+# ── Bump multi-swe-bench to the latest main commit ───────────────────────────
+# Every run resolves main's HEAD and rewrites the `rev` pin in pyproject.toml to
+# that SHA, so the harness always evaluates against the newest registry.
+#
+# The pin stays an exact SHA rather than `branch = "main"` so the commit in use
+# is recorded in pyproject.toml and reproducible after the fact.
+#
+# Guarded because main has shipped commits that break the registry import for
+# every instance and language (e.g. repos/python/Qiskit/ shipped without an
+# __init__.py, so find_packages() dropped it while __init__.py still imported
+# it). If the bump fails to install OR the registry will not import, the old pin
+# is restored and the run continues on the last known-good SHA.
+MSB_URL="https://github.com/Ethara-Ai/multi-swe-bench.git"
+MSB_OLD="$(grep -oP 'multi-swe-bench = .*rev = "\K[0-9a-f]+' "$SCRIPT_DIR/pyproject.toml" 2>/dev/null)"
+echo "Updating multi-swe-bench to latest main..."
+MSB_NEW="$(git ls-remote "$MSB_URL" refs/heads/main 2>/dev/null | cut -f1)"
+
+msb_registry_ok() {
+    (cd "$SCRIPT_DIR" && .venv/bin/python -c \
+        'import warnings; warnings.filterwarnings("ignore")
+import multi_swe_bench.harness
+from multi_swe_bench.harness.instance import Instance
+raise SystemExit(0 if len(Instance._registry) > 0 else 1)') >/dev/null 2>&1
+}
+
+msb_restore() {
+    [[ -n "$MSB_OLD" ]] || return
+    sed -i "s|\(multi-swe-bench = .*rev = \"\)[0-9a-f]*|\1${MSB_OLD}|" "$SCRIPT_DIR/pyproject.toml"
+    (cd "$SCRIPT_DIR" && uv lock --upgrade-package multi-swe-bench >/dev/null 2>&1 && uv sync >/dev/null 2>&1)
+}
+
+if [[ -z "$MSB_NEW" ]]; then
+    echo "  WARN: could not reach $MSB_URL; keeping pinned rev ${MSB_OLD:0:7}"
+    (cd "$SCRIPT_DIR" && uv sync --frozen) || { echo "  FATAL: venv does not match uv.lock; run 'uv sync'"; exit 1; }
+elif [[ "$MSB_NEW" == "$MSB_OLD" ]]; then
+    echo "  ok: already at latest main ${MSB_NEW:0:7}"
+    (cd "$SCRIPT_DIR" && uv sync --frozen) || { echo "  FATAL: venv does not match uv.lock; run 'uv sync'"; exit 1; }
 else
-    echo "  WARN: refresh failed (network or resolution conflict); falling back to cached version"
-    if ! (cd "$SCRIPT_DIR" && uv sync --frozen >/dev/null 2>&1); then
-        echo "  FATAL: environment is in an inconsistent state and cached version is also broken."
-        echo "  Try: revert pyproject.toml multi-swe-bench line to a known-good SHA and run 'uv sync'"
-        exit 1
+    echo "  bumping ${MSB_OLD:0:7} -> ${MSB_NEW:0:7}"
+    sed -i "s|\(multi-swe-bench = .*rev = \"\)[0-9a-f]*|\1${MSB_NEW}|" "$SCRIPT_DIR/pyproject.toml"
+    if (cd "$SCRIPT_DIR" && uv lock --upgrade-package multi-swe-bench && uv sync) && msb_registry_ok; then
+        echo "  ok: now at ${MSB_NEW:0:7}"
+    else
+        echo "  WARN: ${MSB_NEW:0:7} failed to install or its registry will not import; reverting to ${MSB_OLD:0:7}"
+        msb_restore
+        msb_registry_ok || { echo "  FATAL: registry broken on both ${MSB_NEW:0:7} and ${MSB_OLD:0:7}"; exit 1; }
+        echo "  ok: continuing on ${MSB_OLD:0:7}"
     fi
-    echo "  ok: continuing with cached version"
 fi
 
 # Resolve shared paths once.
