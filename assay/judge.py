@@ -113,6 +113,9 @@ MAX_TOKENS = 4000
 # there, returning 200 with no text. Measured at 3 of 243 calls, so the larger
 # budget is spent only on the retry rather than on every call.
 MAX_TOKENS_RETRY = 12000
+# The verdict itself, not just any closed bracket: one truncation closed its
+# rationale and stopped before deciding, so a bracket test would miss it.
+VERDICT_FIELD = "[[SATISFIED:"
 MIN_GAP, MAX_GAP = 3.0, 90.0
 ITEM_DEADLINE = 1800.0
 
@@ -266,7 +269,21 @@ def _retry_after(doc, headers=None) -> int | None:
     return int(ra) if ra else None
 
 
-def is_thinking_exhaustion(error: str) -> bool:
+def is_thinking_exhaustion(
+    error: str, completion: str = "", output_tokens: int = 0
+) -> bool:
+    """Whether the call spent its budget thinking and never emitted a verdict.
+
+    output_tokens counts the thinking block, so a call can return visible
+    rationale text and still be cut off before the verdict: measured at 12 of
+    1254 verdicts, which read as unjudged with no error recorded. Testing for
+    the verdict field catches every shape -- one of the 12 closed its rationale
+    bracket and stopped before SATISFIED, so a bracket test alone misses it.
+    The upper bound keeps an already-escalated call from asking for a budget it
+    has had.
+    """
+    if MAX_TOKENS <= output_tokens < MAX_TOKENS_RETRY and VERDICT_FIELD not in completion:
+        return True
     return "empty completion" in (error or "") and "max_tokens" in error
 
 
@@ -538,7 +555,10 @@ def call_with_backoff(
             proxy, model, system, question, cached, budget
         )
         add_usage(spent, usage)
-        if is_thinking_exhaustion(err) and not retried_for_thinking:
+        if (
+            is_thinking_exhaustion(err, raw or "", (usage or {}).get("output_tokens", 0))
+            and not retried_for_thinking
+        ):
             retried_for_thinking, budget = True, MAX_TOKENS_RETRY
             continue
         if is_unreachable(err):
