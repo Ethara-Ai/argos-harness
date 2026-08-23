@@ -19,9 +19,7 @@ from benchmarks.multiswebench.scripts.eval.score_v2g import compute_score_v2g
 
 
 TEMPLATE_DIR = Path(__file__).parent / "task-template"
-DEFAULT_ECR_PREFIX = (
-    "426628337772.dkr.ecr.ap-south-1.amazonaws.com/argos"
-)
+DEFAULT_ECR_PREFIX = "426628337772.dkr.ecr.ap-south-1.amazonaws.com/argos"
 
 _INTERVAL_CACHE: dict[str, list[tuple[int, int, str]]] | None = None
 
@@ -265,7 +263,17 @@ def map_difficulty(
 
 
 def to_ecr_image(ecr_prefix: str, org: str, repo: str, pr: int) -> str:
-    return f"{ecr_prefix}/{org}__{repo}:pr-{pr}"
+    """Build the ECR image ref for a task.
+
+    ECR repository names are lowercase-only, so ``org``/``repo`` must be
+    normalized: they come verbatim off the dataset record and keep GitHub's
+    original casing (e.g. ``CycloneDX``, ``OpenElements``, ``iD``). Emitting
+    them unnormalized yields a ref that 404s on pull.
+
+    Mirrors ``ecr_repo_name()`` in ``batch_ecr_push.py``, which is what
+    actually pushes these images: ``{org.lower()}__{repo.lower()}``.
+    """
+    return f"{ecr_prefix}/{org.lower()}__{repo.lower()}:pr-{pr}"
 
 
 def get_resource_config(language: str, repo: str) -> dict[str, Any]:
