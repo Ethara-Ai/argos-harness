@@ -65,8 +65,17 @@ def _judge_leg(
     transport: JudgeTransport,
 ) -> tuple[dict[str, dict[str, Any]], str | None]:
     """Judge one anchoring leg (gold or stub). → (verdicts, error)."""
+    # Anchoring judges rules against the gold patch itself, so the patch must
+    # be visible essentially in full: at the 60k default a 139 KB gold patch
+    # was 42% visible and a 1.1 MB one 5%, and every unseen rule came back
+    # "gold FAILS it (unsound)" — indistinguishable from a genuinely bad rule.
+    # The judge (sonnet-5, 1M-token context) absorbs the raised cap; every
+    # other packet consumer keeps the conservative default.
     packet = build_evidence_packet(
-        f"{note}\n\n{instruction}", _EMPTY_ATIF, git_patch, Budgets()
+        f"{note}\n\n{instruction}",
+        _EMPTY_ATIF,
+        git_patch,
+        Budgets(git_patch_cap=1_500_000, total_packet_cap=1_800_000),
     )
     system = prompts.render_judge_system(items, truth_md)
     user = prompts.render_judge_user(packet["text"], len(items))
