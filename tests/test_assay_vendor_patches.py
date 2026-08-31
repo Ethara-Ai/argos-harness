@@ -208,3 +208,72 @@ class TestDriftPatches:
         src = (ASSAY / "cli.py").read_text()
         assert 'ASSAY_PROXY", "http://127.0.0.1:8765/v1/messages"' in src
         assert "8766/v1/messages" not in src
+
+
+class TestTruthUnderSolution:
+    """TRUTH.md ships at solution/TRUTH.md; root copies stay readable.
+
+    The harbor delivery format and the trinity leak gate both name
+    solution/TRUTH.md, so writers must land there while every bundle already on
+    disk keeps grading from the root.
+    """
+
+    def _bundle(self, root: Path, truth_rel: str | None) -> Path:
+        (root / "solution").mkdir(parents=True, exist_ok=True)
+        (root / "tests").mkdir(parents=True, exist_ok=True)
+        if truth_rel is not None:
+            path = root / truth_rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("# TRUTH.md - x\n\n## Defect\n\nprose\n", encoding="utf-8")
+        return root
+
+    def test_writer_target_is_under_solution(self, tmp_path: Path):
+        from assay.bundle import TaskBundle
+
+        task = TaskBundle(self._bundle(tmp_path / "b", None))
+        assert task.truth_path == task.root / "solution" / "TRUTH.md"
+
+    def test_reader_prefers_solution_copy(self, tmp_path: Path):
+        from assay.bundle import TaskBundle
+
+        root = self._bundle(tmp_path / "b", "solution/TRUTH.md")
+        (root / "TRUTH.md").write_text("stale root copy\n", encoding="utf-8")
+        task = TaskBundle(root)
+        assert task.truth_path == root / "solution" / "TRUTH.md"
+        assert "stale" not in task.truth_path.read_text()
+
+    def test_reader_falls_back_to_legacy_root(self, tmp_path: Path):
+        from assay.bundle import TaskBundle
+
+        root = self._bundle(tmp_path / "b", "TRUTH.md")
+        task = TaskBundle(root)
+        assert task.truth_path == root / "TRUTH.md"
+        assert task.truth_path.is_file()
+
+    def test_fixture_bundles_still_resolve(self):
+        from assay.bundle import TaskBundle
+
+        fixtures = REPO_ROOT / "tests" / "fixtures" / "milo_bundles"
+        bundles = (
+            [p for p in sorted(fixtures.glob("*-*")) if (p / "tests").is_dir()]
+            if fixtures.is_dir()
+            else []
+        )
+        if not bundles:
+            pytest.skip(
+                "tests/fixtures/milo_bundles is not carried in this harness; "
+                "no pre-move bundles on disk to check back-compat against"
+            )
+        for root in bundles:
+            assert TaskBundle(root).truth_path.is_file(), root
+
+    def test_site_table_resolves_from_either_location(self, tmp_path: Path):
+        # _find_spec walks up from TRUTH.md to reach tests/rubrics.json, and a
+        # miss there is silent: every site disappears and nothing scores.
+        from assay.truth import _find_spec
+
+        spec = {"sites": [{"path": "a.py", "probes": ["x"]}]}
+        for rel in ("TRUTH.md", "solution/TRUTH.md"):
+            root = self._bundle(tmp_path / rel.replace("/", "_"), rel)
+            (root / "tests" / "rubrics.json").write_text(json.dumps(spec))
+            assert _find_spec(root / rel) == root / "tests" / "rubrics.json", rel

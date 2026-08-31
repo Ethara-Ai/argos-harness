@@ -45,6 +45,12 @@ _ITEM_DIMENSIONS = ("issue_coverage", "verification", "adherence", "maintainabil
 _ITEM_TARGETS = ("final_diff", "trajectory", "verification_output")
 
 
+def _truth_path(bundle: Path) -> Path:
+    from assay.bundle import TaskBundle
+
+    return TaskBundle(bundle).truth_path
+
+
 def _resolve_author_model(llm_config: Path) -> str:
     """Authoring model from the judge config's "author_model" field.
 
@@ -220,7 +226,8 @@ def narrate_bundle(
             draft, added_lines=added_lines, fix_patch=fix_patch, spec_text=spec_text
         )
         if not problems:
-            truth_path = bundle / "TRUTH.md"
+            truth_path = _truth_path(bundle)
+            truth_path.parent.mkdir(parents=True, exist_ok=True)
             truth_path.write_text(
                 narrate.install_narration(
                     truth_path.read_text(encoding="utf-8"), draft
@@ -274,7 +281,7 @@ def _items_user(bundle: Path) -> str:
         encoding="utf-8", errors="replace"
     )
     issues = _ISSUE_RE.findall(instruction)
-    truth = Truth.load(bundle / "TRUTH.md")
+    truth = Truth.load(_truth_path(bundle))
     notes = truth.judge_context() if truth else ""
     return (
         "# Issues in this milestone\n"
@@ -458,7 +465,7 @@ def _anchor_gate(
         ),
         "test_patch": "",
     }
-    truth_md = (bundle / "TRUTH.md").read_text(encoding="utf-8", errors="replace")
+    truth_md = _truth_path(bundle).read_text(encoding="utf-8", errors="replace")
     transport = LiteLLMJudge(load_judge_config(llm_config))
     report = run_anchoring(adapted, record, truth_md, transport)
     out = bundle.parent / ".anchoring" / f"{bundle.name}.json"

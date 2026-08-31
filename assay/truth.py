@@ -259,11 +259,17 @@ def _find_spec(truth_path: Path) -> Path | None:
     rubrics.json. Reading all three keeps older bundles gradeable, and a miss
     here is silent: every site disappears and the channel scores nothing.
     """
+    # TRUTH.md also moved, from the bundle root into solution/. The root is its
+    # parent for a legacy copy and its grandparent for a moved one; tests/ did
+    # not move, so it is resolved against both.
+    roots = [truth_path.parent]
+    if truth_path.parent.name == "solution":
+        roots.append(truth_path.parent.parent)
     for cand in (
-        truth_path.parent / "tests" / "rubrics.json",
+        *(r / "tests" / "rubrics.json" for r in roots),
         truth_path.with_name("rubrics.json"),
-        truth_path.parent / "tests" / "rubric.json",
-        truth_path.parent / "tests" / "pytest.json",
+        *(r / "tests" / "rubric.json" for r in roots),
+        *(r / "tests" / "pytest.json" for r in roots),
         truth_path.with_name("pytest.json"),
     ):
         if cand.is_file() and _has_sites(cand):

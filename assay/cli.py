@@ -798,7 +798,7 @@ def _is_hand_authored(rubric_path: Path) -> bool:
         return True
     if "authored_by" in doc:  # pre-3-key rubric: the stamp lives in the file
         return doc.get("authored_by") != AUTHOR_STAMP
-    truth_path = rubric_path.parent.parent / "TRUTH.md"
+    truth_path = TaskBundle(rubric_path.parent.parent).truth_path
     if not truth_path.is_file():
         return False
     try:
@@ -941,7 +941,9 @@ def cmd_author(args) -> int:
     )
     written = install_narration(fresh, carried) if carried else fresh
     written = carry_certification(written, previous, task.fix_patch_sha256)
-    task.truth_path.write_text(written, encoding="utf-8")
+    truth_path = task.truth_path
+    truth_path.parent.mkdir(parents=True, exist_ok=True)
+    truth_path.write_text(written, encoding="utf-8")
     rubric = json.loads(
         generate_rubric(
             sites=spec_sites,

@@ -135,9 +135,24 @@ class TaskBundle:
         return self.root / "tests"
 
     @property
+    def solution_dir(self) -> Path:
+        return self.root / "solution"
+
+    @property
     def truth_path(self) -> Path:
-        """At the task root, beside instruction.md: both are read by people."""
-        return self.root / "TRUTH.md"
+        """Under ``solution/``, beside fix.patch: both are private carriers.
+
+        Reads prefer ``solution/TRUTH.md`` and fall back to the pre-move root
+        copy that bundles already on disk still carry. Neither present returns
+        the new path, so writers create it there.
+        """
+        new = self.solution_dir / "TRUTH.md"
+        if new.is_file():
+            return new
+        legacy = self.root / "TRUTH.md"
+        if legacy.is_file():
+            return legacy
+        return new
 
     @property
     def rubric_path(self) -> Path:

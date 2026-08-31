@@ -110,7 +110,11 @@ def test_map_difficulty_time_estimate_dominates_patch_lines():
 
 
 def test_to_ecr_image_format():
-    assert to_ecr_image("reg", "apache", "kafka", 42) == "reg/apache_m_kafka:pr-42"
+    assert to_ecr_image("reg", "apache", "kafka", 42) == "reg/apache__kafka:pr-42"
+
+
+def test_to_ecr_image_lowercases_org_and_repo():
+    assert to_ecr_image("reg", "CycloneDX", "cdxgen", 7) == "reg/cyclonedx__cdxgen:pr-7"
 
 
 def test_get_resource_config_known_language_repo_specific():

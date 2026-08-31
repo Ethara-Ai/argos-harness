@@ -34,6 +34,7 @@ from benchmarks.multiswebench.scripts.rubric.evidence import (
     build_evidence_packet,
 )
 from benchmarks.multiswebench.scripts.rubric.judge_client import JudgeTransport
+from benchmarks.multiswebench.scripts.rubric.runner import truth_asset_path
 from benchmarks.multiswebench.scripts.rubric.scoring import compute_rubric_score
 from benchmarks.multiswebench.scripts.rubric.verdict_parser import parse_judge_response
 
@@ -252,7 +253,7 @@ def anchor_assets(
     redraft loop)."""
     instance_id = assets_dir.name
     rubric_path = assets_dir / "rubric.json"
-    truth_path = assets_dir / "TRUTH.md"
+    truth_path = truth_asset_path(assets_dir)
     report_path = assets_dir / "anchoring_report.json"
 
     try:

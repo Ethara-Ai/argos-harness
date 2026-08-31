@@ -37,7 +37,7 @@ def get_official_docker_image(
     """Get the official docker image for a Multi-SWE-Bench instance.
 
     Uses consistent Multi-SWE-Bench style naming for ALL languages:
-        {prefix}/{org}_m_{repo}:pr-{number}
+        {prefix}/{org}__{repo}:pr-{number}
 
     This ensures uniform naming across Python, Java, Go, etc., making it easier
     to manage custom images in ECR or other registries.
@@ -64,7 +64,7 @@ def get_official_docker_image(
 
     # Use pr-{number} tag if we have a number, otherwise fall back to "base"
     tag = f"pr-{number}" if number else "base"
-    official_image_name = f"{docker_image_prefix}/{org}_m_{repo_name}:{tag}".lower()
+    official_image_name = f"{docker_image_prefix}/{org}__{repo_name}:{tag}".lower()
 
     logger.debug(f"Multi-SWE-Bench image: {official_image_name}")
     return official_image_name

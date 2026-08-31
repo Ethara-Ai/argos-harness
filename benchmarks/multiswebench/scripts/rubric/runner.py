@@ -57,6 +57,19 @@ def rubric_sha256(rubric: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def truth_asset_path(assets_dir: Path) -> Path:
+    """TRUTH.md in a flat staging dir or in a bundle that moved it to solution/.
+
+    Returns the solution/ path when nothing exists yet, so writers create it
+    at the delivery location.
+    """
+    nested = assets_dir / "solution" / "TRUTH.md"
+    if nested.is_file():
+        return nested
+    flat = assets_dir / "TRUTH.md"
+    return flat if flat.is_file() else nested
+
+
 def load_rubric_assets(
     assets_dir: Path,
 ) -> tuple[dict[str, Any] | None, str, list[str]]:
@@ -64,7 +77,7 @@ def load_rubric_assets(
     a hand-edited rubric can never silently grade."""
     errors: list[str] = []
     rubric_path = assets_dir / "rubric.json"
-    truth_path = assets_dir / "TRUTH.md"
+    truth_path = truth_asset_path(assets_dir)
     if not rubric_path.is_file():
         return None, "", [f"rubric_missing: {rubric_path}"]
     try:
