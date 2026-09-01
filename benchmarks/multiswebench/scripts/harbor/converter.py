@@ -250,16 +250,273 @@ def validate_instance_id(instance_id: str) -> str:
     return instance_id
 
 
-def map_difficulty(
-    time_estimate: str | None = None, patch_lines: int | None = None
-) -> str:
-    if time_estimate == "15min" or (patch_lines is not None and patch_lines < 20):
-        return "easy"
-    if time_estimate == "1h" or (patch_lines is not None and patch_lines < 100):
-        return "medium"
-    if time_estimate == "4h" or (patch_lines is not None and patch_lines >= 100):
-        return "hard"
-    return "medium"
+# Path/extension signals for files that carry no *source* difficulty. A patch
+# touching only these is noise for sizing: tests restate behaviour, docs and CI
+# describe it, lockfiles and rendered manifests are generated. Excluding them
+# keeps the band a measure of the load-bearing edit the agent must reproduce.
+_NON_SOURCE_DIR_PARTS = (
+    "tests",
+    "test",
+    "e2e",
+    "testdata",
+    "__tests__",
+    "spec",
+    "docs",
+    ".github",
+    "charts",
+    "manifests",
+)
+_NON_SOURCE_SUFFIXES = (
+    ".md",
+    ".rst",
+    ".lock",
+)
+_NON_SOURCE_BASENAMES = (
+    "go.sum",
+    "go.mod",
+    "package-lock.json",
+    "yarn.lock",
+    "cargo.lock",
+    "pnpm-lock.yaml",
+    "npm-shrinkwrap.json",
+    "composer.lock",
+    "gemfile.lock",
+    "poetry.lock",
+    "pdm.lock",
+    "uv.lock",
+)
+_DIFF_GIT_RE = re.compile(r"^diff --git a/(?P<a>\S+) b/(?P<b>\S+)\s*$")
+
+
+def is_source_path(path: str) -> bool:
+    """True when *path* is load-bearing source for difficulty sizing.
+
+    Tests, docs, CI config, lockfiles and chart/manifest trees are excluded:
+    they scale with a change without representing the work of making it.
+    """
+    normalized = path.strip().replace("\\", "/").lower()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    normalized = normalized.strip("/")
+    if not normalized:
+        return False
+    parts = normalized.split("/")
+    basename = parts[-1]
+    if basename in _NON_SOURCE_BASENAMES:
+        return False
+    if any(basename.endswith(suffix) for suffix in _NON_SOURCE_SUFFIXES):
+        return False
+    return not any(part in _NON_SOURCE_DIR_PARTS for part in parts)
+
+
+def count_source_hunks(patch_text: str | None) -> int:
+    """Count ``@@`` hunks in *patch_text*, skipping non-source files.
+
+    Walks ``diff --git a/<X> b/<Y>`` headers so a file is judged once by its
+    own path, then tallies the hunk headers that follow it. A rename into or
+    out of a test tree keeps the hunk only when *both* sides are source.
+    """
+    if not patch_text:
+        return 0
+    hunks = 0
+    counting = False
+    for line in patch_text.splitlines():
+        header = _DIFF_GIT_RE.match(line)
+        if header is not None:
+            counting = is_source_path(header.group("a")) and is_source_path(
+                header.group("b")
+            )
+            continue
+        if counting and line.startswith("@@"):
+            hunks += 1
+    return hunks
+
+
+# Paired reference models' (Opus 5 / GLM-5.3) pass rate. Cut points are exact
+# eighths -- the only resolution 8 rollouts can express -- so do not round them.
+# Lower-inclusive, upper-exclusive; a higher pass rate is easier.
+#
+# Trivial is a real band, not a filter: a task that the reference models solve
+# almost every time is still labelled, and delivery decides separately whether
+# to ship it (target mix is 0%).
+TRIVIAL_PASS_RATE = 0.875  # 7/8
+EASY_PASS_RATE = 0.50  # 4/8
+DIFFICULTY_BANDS: tuple[tuple[float, str], ...] = (
+    (0.25, "expert"),  # 0-2/8
+    (0.375, "hard"),  # 2/8-3/8
+    (EASY_PASS_RATE, "medium"),  # 3/8-4/8
+    (TRIVIAL_PASS_RATE, "easy"),  # 4/8-7/8
+)
+TRIVIAL_DIFFICULTY = "trivial"  # 7/8-8/8
+UNBANDED_DIFFICULTY = "unbanded"
+
+DIFFICULTY_TIERS = ("trivial", "easy", "medium", "hard", "expert")
+
+
+def map_difficulty(pass_rate: float | None = None) -> str:
+    """``None`` (rollouts not yet run) bands as unbanded, never a guessed tier."""
+    if pass_rate is None:
+        return UNBANDED_DIFFICULTY
+    for upper, label in DIFFICULTY_BANDS:
+        if pass_rate < upper:
+            return label
+    return TRIVIAL_DIFFICULTY
+
+
+# The six task types a bundle may declare. `category` answers "what kind of
+# work is this", not "which repo is it in".
+TASK_CATEGORIES = (
+    "bug_fixing",
+    "feature_development",
+    "system_optimization",
+    "code_review",
+    "code_refactoring",
+    "integration_bug",
+)
+DEFAULT_CATEGORY = "bug_fixing"
+
+# Vocabulary per task type. Terms are deliberately narrow: a bare "cache" or
+# "plugin" says nothing about a change that merely happens to touch one, so
+# only phrasings that describe the *intent* of the work are listed.
+_CATEGORY_TERMS: dict[str, re.Pattern[str]] = {
+    "system_optimization": re.compile(
+        r"\b(performance (?:issue|problem|regression)?|speed[\s-]?up|speeds? up|"
+        r"much faster|too slow|slow(?:ness)?|memory (?:usage|leak|footprint)|"
+        r"optimi[sz](?:e|es|ed|ing|ation)|latency|throughput|"
+        r"reduce (?:allocations?|overhead)|cache (?:the|result|lookup|computed)|"
+        r"caching)\b",
+        re.IGNORECASE,
+    ),
+    "integration_bug": re.compile(
+        r"\b(compat(?:ibility|ible)|interop(?:erability)?|"
+        r"upgrade (?:to|the)|bump \S+ to|version bump|"
+        r"dependenc(?:y|ies) (?:conflict|issue|update)|"
+        r"breaks? (?:with|against)|no longer works? with|"
+        r"third[\s-]?party|integration with)\b",
+        re.IGNORECASE,
+    ),
+    "code_refactoring": re.compile(
+        r"\b(refactor(?:s|ing|ed)?|clean[\s-]?up|cleans? up|"
+        r"simplif(?:y|ies|ied|ication)|renam(?:e|es|ed|ing)|"
+        r"restructur(?:e|es|ing|ed)|deduplicat(?:e|ion)|de[\s-]?dup|"
+        r"extract(?:ed)? (?:method|helper|class|function)|"
+        r"consolidat(?:e|es|ing)|replace \S+ module|move[sd]? \S+ (?:to|into))\b",
+        re.IGNORECASE,
+    ),
+    "code_review": re.compile(
+        r"\b(lint(?:ing|er)?|code style|styling nit|docstrings?|"
+        r"typos?|spelling|comments? only|formatting only|review feedback|"
+        r"nitpick|pep8|eslint|checkstyle|missed typo)\b",
+        re.IGNORECASE,
+    ),
+    "feature_development": re.compile(
+        r"\b(add(?:s|ed|ing)?|support for|introduc(?:e|es|ed|ing)|"
+        r"implement(?:s|ed|ing|ation)?|new (?:feature|option|api|endpoint|flag|"
+        r"command|method|fetch method)|feature request|\[feature\]|feat|"
+        r"allow(?:s|ing)? |expose[sd]?|enable[sd]? |ability to|"
+        r"option to|improve(?:s|d|ment)?)\b",
+        re.IGNORECASE,
+    ),
+    "bug_fixing": re.compile(
+        r"\b(fix(?:es|ed|ing)?|bug|\[bug\]|defect|"
+        r"error|crash(?:es|ed|ing)?|regression|incorrect(?:ly)?|broken|"
+        r"fail(?:s|ed|ure|ing)?|exception|traceback|stack ?trace|"
+        r"not work(?:ing)?|does ?n[o']?t work|unexpected|wrong|"
+        r"should (?:not|n[o']?t) )\b",
+        re.IGNORECASE,
+    ),
+}
+
+# Titles state intent; bodies are padded with environment dumps, checklists and
+# quoted logs, so a body hit is worth far less than a title hit. Breadth of
+# distinct matching terms beats one word repeated, which is what makes a real
+# optimization task outrank a bug report that says "cache" once.
+_TITLE_WEIGHT = 6.0
+_BODY_WEIGHT = 1.0
+_PATCH_WEIGHT = 0.25
+_REPEAT_CREDIT = 0.25
+_MAX_REPEAT_CREDIT = 3.0
+
+# Applied to the summed score, not to individual hits. `bug_fixing` vocabulary
+# is unavoidably ambient in issue trackers, so it must clear a higher bar than
+# a deliberate phrase like "refactor" or "add support for".
+_CATEGORY_PRIOR: dict[str, float] = {
+    "bug_fixing": 0.85,
+    "feature_development": 1.0,
+    "code_refactoring": 1.15,
+    "system_optimization": 1.15,
+    "integration_bug": 1.15,
+    "code_review": 1.25,
+}
+
+
+def _score_field(pattern: re.Pattern[str], text: str, weight: float) -> float:
+    if not text:
+        return 0.0
+    matches = pattern.findall(text)
+    if not matches:
+        return 0.0
+    distinct = {m.lower() if isinstance(m, str) else str(m).lower() for m in matches}
+    repeats = min(len(matches) - len(distinct), _MAX_REPEAT_CREDIT / _REPEAT_CREDIT)
+    return weight * (len(distinct) + repeats * _REPEAT_CREDIT)
+
+
+def _category_fields(record_or_texts: Any) -> tuple[str, str, str]:
+    """Split the input into (title, body, patch) for weighted scoring."""
+    if isinstance(record_or_texts, str):
+        return record_or_texts, "", ""
+    if isinstance(record_or_texts, dict):
+        record: dict[str, Any] = record_or_texts
+        titles = [str(record.get("title") or "")]
+        bodies = [str(record.get("body") or "")]
+        issues = record.get("resolved_issues") or []
+        if isinstance(issues, list):
+            for issue in issues:  # pyright: ignore[reportUnknownVariableType]
+                if isinstance(issue, dict):
+                    titles.append(str(issue.get("title") or ""))  # pyright: ignore[reportUnknownArgumentType]
+                    bodies.append(str(issue.get("body") or ""))  # pyright: ignore[reportUnknownArgumentType]
+        return (
+            "\n".join(t for t in titles if t),
+            "\n".join(b for b in bodies if b),
+            str(record.get("fix_patch") or ""),
+        )
+    if record_or_texts:
+        return "\n".join(str(item) for item in record_or_texts), "", ""
+    return "", "", ""
+
+
+def score_categories(record_or_texts: Any) -> dict[str, float]:
+    """Weighted score per task type; empty when nothing matched at all."""
+    title, body, patch = _category_fields(record_or_texts)
+    if not (title or body or patch).strip():
+        return {}
+
+    scores: dict[str, float] = {}
+    for label in TASK_CATEGORIES:
+        pattern = _CATEGORY_TERMS[label]
+        score = (
+            _score_field(pattern, title, _TITLE_WEIGHT)
+            + _score_field(pattern, body, _BODY_WEIGHT)
+            + _score_field(pattern, patch, _PATCH_WEIGHT)
+        ) * _CATEGORY_PRIOR[label]
+        if score > 0.0:
+            scores[label] = score
+    return scores
+
+
+def classify_category(record_or_texts: Any) -> str:
+    """Derive the task *type* from its issue/PR prose.
+
+    Accepts a raw dataset record (title/body/resolved_issues/fix_patch are
+    read), a single string, or any iterable of strings. Each of the six types
+    is scored over the title (strong), body (weak) and patch (weakest); the
+    highest score wins. Falls back to ``bug_fixing``, the dominant class for
+    issue-resolving benchmarks, when nothing matches.
+    """
+    scores = score_categories(record_or_texts)
+    if not scores:
+        return DEFAULT_CATEGORY
+    return max(sorted(scores), key=lambda label: scores[label])
 
 
 def to_ecr_image(ecr_prefix: str, org: str, repo: str, pr: int) -> str:
@@ -1158,16 +1415,21 @@ def build_task(
     resources = get_resource_config(language, repo_name)
     verifier_timeout = 7200.0
     agent_timeout = verifier_timeout * 2
-    patch_lines = len((fix_patch_text or "").splitlines())
-    difficulty = map_difficulty(
-        time_estimate=record.get("time_estimate"),
-        patch_lines=patch_lines,
+    difficulty = map_difficulty(record.get("reference_pass_rate"))
+    category = classify_category(
+        {
+            "title": title,
+            "body": body,
+            "resolved_issues": resolved_issues,
+            "fix_patch": fix_patch_text,
+        }
     )
     task_toml_text = render_literal(
         read_text(TEMPLATE_DIR / "task.toml"),
         task_uuid=task_uuid,
         language=language.lower(),
         repo_name=repo_name,
+        category=category,
         difficulty=difficulty,
         verifier_timeout=f"{verifier_timeout}",
         agent_timeout=f"{agent_timeout}",

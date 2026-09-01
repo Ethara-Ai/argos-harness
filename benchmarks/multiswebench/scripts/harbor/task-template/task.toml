@@ -2,19 +2,21 @@ schema_version = "1.0"
 
 [task]
 uuid_v5 = "{task_uuid}"
+project_id = "Argos-001"
 authors = [
-    { name = "Suryansh Rana" },
-    { name = "Sarvex Jatasra" },
-    { name = "Prakhar Singh" },
-    { name = "Gautam Dubey" },
-    { name = "Amartya Kumar Yadav" },
-    { name = "Abhishek Verma" },
+    { email = "suryansh@ethara.ai" },
+    { email = "sarvex@ethara.ai" },
+    { email = "gurpreet.singh2037@ethara.ai" },
+    { email = "prafful.gupta@ethara.ai" },
+    { email = "gautam.dubey@ethara.ai" },
+    { email = "prakhar.singh@ethara.ai" },
+    { email = "abhishek.verma@ethara.ai" },
 ]
 keywords = ["{language}", "issue-resolving", "{repo_name}"]
 
 [metadata]
 difficulty = "{difficulty}"
-category = "software-development"
+category = "{category}"
 
 [verifier]
 # V-001: neither the verifier nor the agent needs external network. The verifier
