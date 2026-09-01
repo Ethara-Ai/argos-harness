@@ -1493,7 +1493,7 @@ def build_task(
     (task_dir / "solution" / "solve.sh").write_text(solve_text, encoding="utf-8")
 
     task_checksum = sha256_of_dir(task_dir)
-    full_task_name = f"multi-swe-bench/multi-swe-bench__{sanitized_id}"
+    full_task_name = f"EtharaOrion/EtharaOrion__{sanitized_id}"
     return {
         "sanitized_id": sanitized_id,
         "full_task_name": full_task_name,
