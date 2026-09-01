@@ -32,6 +32,8 @@ MODEL_ALIASES = {
     "anthropic_claude-opus-4-8": "opus-4.8",
     "claude-sonnet-5": "sonnet-5",
     "claude-opus-4-7": "opus-4.7",
+    "claude-opus-5": "opus-5",
+    "anthropic_claude-opus-5": "opus-5",
 }
 
 _TOML_UUID_RE = re.compile(r'^uuid_v5\s*=\s*"([0-9a-fA-F-]{36})"', re.MULTILINE)

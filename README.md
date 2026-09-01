@@ -365,9 +365,9 @@ empty trajectories, not partial ones.
 
 | Role | Where configured | Default |
 |---|---|---|
-| Trajectory agent | `--llm-config` file → `model` (`claude-code.json` or `codex.json`) | `anthropic/claude-opus-4-8` |
-| Rubric author (writes TRUTH.md narration + R-items) | `.llm_config/rubric-judge.json` → `author_model` | `anthropic/claude-opus-5` |
-| Judge + anchoring gate | `.llm_config/rubric-judge.json` → `judge_model` (council name derived from it) | `anthropic/claude-sonnet-5` |
+| Trajectory agent | `--llm-config` file → `model` (`claude-code.json` or `codex.json`) | `anthropic/claude-opus-5` |
+| Rubric author (writes TRUTH.md narration + R-items) | `.llm_config/rubric-judge.json` → `author_model` | `anthropic/claude-opus-4-8` |
+| Judge + anchoring gate | `.llm_config/rubric-judge.json` → `judge_model` (council name derived from it) | `openai/responses/gpt-5.6-sol` |
 
 **Prefix routing.** All three slots take a full litellm-style id whose provider
 prefix selects the bridge automatically: `anthropic/<m>` → Claude bridge

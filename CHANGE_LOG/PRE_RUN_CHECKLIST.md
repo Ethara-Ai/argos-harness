@@ -74,9 +74,9 @@ Inspect `argos_bundles/<uuid>/` of the first finished instance:
 | ☐ `environment/Dockerfile` | **template render** (two-stage: python-fetch + `FROM <per-PR ECR image>` + repo name) — the swap was REVERTED 2026-08-13; input-file Dockerfiles appear ONLY in the 31 pre-revert dapr bundles (accepted mixed state) | revert of `e512241` |
 | ☐ `tests/rubrics.json` | top-level keys exactly `{items, checks, sites}` — **no** schema_version/authored_by/task_uuid header | `4ba0172` |
 | ☐ `verifier/process.json` | **`judge: {model}` block** (no council/kappa anywhere) + `composition` has NO `kappa`/`kappa_scope`/`rubric_weight`; `process.score = (det + rubric)/2` (plain average — the judge channel COUNTS) | plain-average change 2026-08-13 (re-applies + simplifies `7514c58`) |
-| ☐ `verifier/final_score.md` | `Judge: sonnet-5` header; formula row `**process** = (det + rubric) / 2` — no `κ`, no `1·` weight | plain-average change 2026-08-13 |
+| ☐ `verifier/final_score.md` | `Judge: gpt-5.6-sol` header; formula row `**process** = (det + rubric) / 2` — no `κ`, no `1·` weight | plain-average change 2026-08-13 |
 | ☐ `result.json` assay block | keys `{alpha, gate, stratum_size, judge, status}` (no kappa, no rubric_weight, no council) | plain-average change 2026-08-13 |
-| ☐ `trajectories/<alias>/run_1/` | alias form (`opus-4.8`), `agent/trajectory.json` present, **thinking/reasoning content non-empty** in the raw output.jsonl | force_adaptive_thinking |
+| ☐ `trajectories/<alias>/run_1/` | alias form (`opus-5`), `agent/trajectory.json` present, **thinking/reasoning content non-empty** in the raw output.jsonl | force_adaptive_thinking |
 | ☐ result.json `n_episodes` vs `max_turns` | max_turns = 1000; run well under ceiling (B4 gate open unless genuinely cut off) | MAX_ITER default |
 | ☐ result.json cost | **non-zero** even though the bridge bills 0 — `derive_cost_from_tokens` now works (latent NameError fixed in `e512241`) | `e512241` |
 | ☐ staging | bundle copied FLAT to `<data-dir>/<uuid>/`; `verdicts/` NOT staged | `bf226c3` |
