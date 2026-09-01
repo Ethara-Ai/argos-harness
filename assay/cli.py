@@ -97,7 +97,7 @@ PREAMBLE = Path(__file__).resolve().parent / "preamble.json"
 def _task(args) -> TaskBundle:
     """Accepts a delivery that nests tasks under ``dataset/`` and one that does not.
 
-    milo-bench-samples publishes tasks at the repository root; aurora keeps them
+    argos-samples publishes tasks at the repository root; aurora keeps them
     under ``dataset/``. Assuming the nested shape did not fail loudly when it was
     wrong - it built a bundle from a path that happened to exist, computed a
     different fingerprint, and reported the verdicts as stale against a bundle

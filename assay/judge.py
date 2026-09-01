@@ -47,7 +47,7 @@ __all__ = [
 # re-judge instead of quietly mixing eras, and makes the artifact name its judges.
 #
 # The key is the name the corpus records; the value is the name the bridge wants.
-# Those diverged when milo-bench-samples was republished with the model as
+# Those diverged when argos-samples was republished with the model as
 # `opus-4.8`, and reading only the long form silently dropped every verdict that
 # judge had produced - scoring_members filtered them out and the runs scored on
 # the deterministic channel alone. A short model name is still a model name, so

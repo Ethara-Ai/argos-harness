@@ -1,4 +1,4 @@
-"""Export a harbor package into the milo-bench-samples bundle layout.
+"""Export a harbor package into the argos-samples bundle layout.
 
 Reshape only — no content invention:
 

@@ -1,4 +1,4 @@
-"""Readers for a Milo-Bench task bundle and a recorded run.
+"""Readers for a Argos task bundle and a recorded run.
 
 Two facts about the delivery corpus drive the shape of this module, and both were
 established by reading all 1221 recorded runs rather than by reading the docs:
@@ -274,10 +274,10 @@ class RunBundle:
     def scores(self) -> dict[str, Any]:
         """Accepts both harness spellings of the same block.
 
-        milo-bench writes ``scores.{score,score_binary}``; aurora writes
+        argos writes ``scores.{score,score_binary}``; aurora writes
         ``rewards.{reward,score_binary}``. Reading one name only leaves the other
         corpus with score=None, which reads as unverifiable rather than as the
-        schema mismatch it is. The canonical spelling here is the milo one, and
+        schema mismatch it is. The canonical spelling here is the argos one, and
         aurora's is translated into it - those files are not ours to rename.
         """
         vr = self.verifier_result

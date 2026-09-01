@@ -272,7 +272,7 @@ def main() -> int:
     )
     ap.add_argument("--uuid", required=True, help="dataset record uuid")
     ap.add_argument("--instance-id", required=True, help="e.g. ReactiveX__RxJava-7205")
-    ap.add_argument("--bundle", default="", help="milo bundle dir (for judge lines)")
+    ap.add_argument("--bundle", default="", help="argos bundle dir (for judge lines)")
     ap.add_argument(
         "--force",
         action="store_true",

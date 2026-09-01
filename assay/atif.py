@@ -1,6 +1,6 @@
 """ATIF trajectory reader.
 
-One code path for all three model families in the Milo-Bench delivery corpus
+One code path for all three model families in the Argos delivery corpus
 (claude-opus-4-8, gemini-3.1-pro-preview, gpt-5.5). The schema is ATIF-v1.7.
 
 Two divergences between families are load bearing and are normalised here rather
@@ -35,7 +35,7 @@ def unreadable_dialect(histogram: dict[str, int]) -> bool:
 
     A strict majority of unknown calls means a foreign dialect. A handful of
     stray names does not: 'str_replace' leaks out as a tool name once in 26,158
-    milo calls, and treating that as unreadable voided a run scoring 1.0.
+    argos calls, and treating that as unreadable voided a run scoring 1.0.
     """
     total = sum(histogram.values())
     if not total:

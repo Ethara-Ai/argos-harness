@@ -54,12 +54,12 @@ EGRESS_FILTER_DISABLE=1 RUBRIC_ENABLE=1 bash run_eval.sh \
   --llm-config .llm_config/claude-code.json \
   --dataset dataset/<batch>.jsonl \
   --ecr-prefix 426628337772.dkr.ecr.ap-south-1.amazonaws.com/rfp-coding-q1-tag-milo \
-  --lang go --no-push --data-dir ../milo-bench-dataset
+  --lang go --no-push --data-dir ../argos-dataset
 ```
 
 - ☐ **NO `--max-iter`** (default 1000). Any lower ceiling and assay's B4 gate voids ~every run.
 - ☐ `--lang go` for BOTH batches (dapr and Xray-core are Go).
-- ☐ `--no-push --data-dir` points at the local clone of `EtharaOrion/milo-bench-samples`
+- ☐ `--no-push --data-dir` points at the local clone of `EtharaOrion/argos-samples`
   (origin URL must match). Publishing stays manual from the clone — the three `if false`
   sentinels in run_eval.sh guarantee nothing auto-pushes.
 - ☐ `.llm_config/claude-code.json` (NOT `proxy/claude-code-oauth.json`) — it carries
@@ -192,7 +192,7 @@ gets committed.
 - The 11 pre-existing test failures (list in §A) — unrelated, fail on clean HEAD.
 - Existing dapr-1351 bundle `edd779ae…` keeps its old template Dockerfile (deliberate:
   old bundles not regenerated).
-- `milo-bench-samples` corpus bundles differ from ours in Dockerfile shape + rubrics.json
+- `argos-samples` corpus bundles differ from ours in Dockerfile shape + rubrics.json
   header + council block — all three are deliberate TL-directed divergences
   (see `DOCKERFILE_SWAP.md`, `REWARD_CHANGE_LOG.md`, commit `4ba0172`).
 - Timing expectation: ~20 min/instance full chain → 41 dapr ≈ 10–14 h, 38 XTLS similar;

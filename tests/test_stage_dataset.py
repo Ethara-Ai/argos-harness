@@ -4,7 +4,7 @@ These tests build a network-free Bash harness that:
 1. Extracts the actual stage_dataset function from run_eval.sh source
 2. Asserts extraction integrity (one start marker, expected boundary, closing brace)
 3. Supplies stubs for log, PUBLISH_BASE, RUBRIC_BUNDLE_DEST
-4. Covers: flat Milo branch, legacy task+trajectory branch, missing UUID (status 1)
+4. Covers: flat Argos branch, legacy task+trajectory branch, missing UUID (status 1)
 """
 
 from __future__ import annotations
@@ -114,16 +114,16 @@ def _build_harness(
     """)
 
 
-# ── Flat Milo bundle branch ─────────────────────────────────────────────────
+# ── Flat Argos bundle branch ─────────────────────────────────────────────────
 
 
-def test_flat_milo_bundle_copied_and_git_stripped(tmp_path: Path):
-    """When a milo bundle exists, it is copied to PUBLISH_BASE/<uuid>,
+def test_flat_argos_bundle_copied_and_git_stripped(tmp_path: Path):
+    """When a argos bundle exists, it is copied to PUBLISH_BASE/<uuid>,
     nested .git dirs are stripped, and sibling verdicts are NOT copied.
     Status 0."""
     uuid = "test-uuid-flat"
     # Set up bundle source
-    bundle_dest = tmp_path / "milo_bundles"
+    bundle_dest = tmp_path / "argos_bundles"
     bundle_src = bundle_dest / uuid
     bundle_src.mkdir(parents=True)
     (bundle_src / "trajectory.json").write_text('{"key":"val"}')
@@ -161,11 +161,11 @@ def test_flat_milo_bundle_copied_and_git_stripped(tmp_path: Path):
     )
 
 
-def test_flat_milo_sibling_verdicts_not_copied(tmp_path: Path):
+def test_flat_argos_sibling_verdicts_not_copied(tmp_path: Path):
     """Sibling verdicts/ directory from the bundle store must never appear
     in the publish destination."""
     uuid = "test-uuid-no-verdicts"
-    bundle_dest = tmp_path / "milo_bundles"
+    bundle_dest = tmp_path / "argos_bundles"
     bundle_src = bundle_dest / uuid
     bundle_src.mkdir(parents=True)
     (bundle_src / "data.json").write_text("{}")
@@ -199,10 +199,10 @@ def test_flat_milo_sibling_verdicts_not_copied(tmp_path: Path):
 
 
 def test_legacy_task_trajectory_copied(tmp_path: Path):
-    """When no milo bundle exists, the legacy harbor task + trajectory
+    """When no argos bundle exists, the legacy harbor task + trajectory
     directories are copied. Status 0."""
     uuid = "test-uuid-legacy"
-    bundle_dest = tmp_path / "milo_bundles"
+    bundle_dest = tmp_path / "argos_bundles"
     bundle_dest.mkdir()
     # No bundle for this uuid (bundle_dest/<uuid> does NOT exist)
 
@@ -249,7 +249,7 @@ def test_legacy_task_trajectory_copied(tmp_path: Path):
 
 def test_missing_uuid_returns_1(tmp_path: Path):
     """Calling stage_dataset with an empty uuid must return 1."""
-    bundle_dest = tmp_path / "milo_bundles"
+    bundle_dest = tmp_path / "argos_bundles"
     bundle_dest.mkdir()
     publish_base = tmp_path / "publish"
     publish_base.mkdir()

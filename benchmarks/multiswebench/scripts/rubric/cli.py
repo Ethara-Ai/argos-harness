@@ -370,7 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_author_milo = sub.add_parser(
         "author-milo",
-        help="full milo authoring flow for exported bundles "
+        help="full argos authoring flow for exported bundles "
         "(assay author + narrate + draft-items + gates + emit-tests)",
     )
     p_author_milo.add_argument(
@@ -386,7 +386,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_author_milo.set_defaults(fn=_cmd_author_milo)
 
     p_export = sub.add_parser(
-        "export-bundle", help="reshape harbor packages into milo-bench bundle layout"
+        "export-bundle", help="reshape harbor packages into argos bundle layout"
     )
     p_export.add_argument("--harbor-out", required=True, type=Path)
     p_export.add_argument(

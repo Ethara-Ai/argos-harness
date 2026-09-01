@@ -27,7 +27,7 @@ import yaml
 # Both judge_context (what the judge is sent) and lint_truth (what the oracle-path
 # guard polices) read this one tuple, so the guard can never police a different set
 # than what is actually sent.
-# Corpus-generation naming (milo-bench-samples): the narrated sections are
+# Corpus-generation naming (argos-samples): the narrated sections are
 # "Solution shape / Ordered plan / Pitfalls"; the pre-narration template stubs
 # ("Pseudocode" etc.) never ship, so the judge-visible set uses the new names.
 JUDGE_SECTIONS = ("Defect", "Root cause", "Solution shape", "Ordered plan", "Pitfalls")

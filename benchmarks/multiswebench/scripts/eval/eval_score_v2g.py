@@ -19,9 +19,9 @@ Key v2g additions over v2d:
 Usage::
 
     uv run python benchmarks/multiswebench/scripts/eval/eval_score_v2g.py \\
-        --trajectories /path/to/freya/milo-bench/trajectories \\
-        --dataset /path/to/freya/milo-bench/dataset \\
-        --out milo-bench/examples_out/score_v2g_eval.csv \\
+        --trajectories /path/to/freya/argos/trajectories \\
+        --dataset /path/to/freya/argos/dataset \\
+        --out argos/examples_out/score_v2g_eval.csv \\
         --limit 0   # 0 = all reports; otherwise cap for smoke runs
 """
 

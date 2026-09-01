@@ -1,7 +1,7 @@
-"""THE milo-format acceptance test: replay the reference corpus through the
+"""THE argos-format acceptance test: replay the reference corpus through the
 vendored assay.
 
-The corpus at milo-bench-samples/ was produced by a newer assay than the copy
+The corpus at argos-samples/ was produced by a newer assay than the copy
 we vendored; six drift patches were applied. Originally this test required
 byte-identical regeneration of every artifact. The single-judge reward change
 ("remove kappa, keep alpha") deliberately diverges from the corpus format:
@@ -35,7 +35,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CORPUS = Path("/Users/anzar/Desktop/ori/milo-bench-samples")
+CORPUS = Path("/Users/anzar/Desktop/ori/argos-samples")
 
 BUNDLES = {
     "016372a9-f7b9-4e69-919c-15c286423dc9": "scored (go-gorm, incl. 2-judge council runs)",

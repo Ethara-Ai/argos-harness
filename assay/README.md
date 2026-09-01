@@ -1,6 +1,6 @@
 # ASSAY
 
-Process verification for Milo-Bench (Aurora). Grades **how** a run solved a task,
+Process verification for Argos (Aurora). Grades **how** a run solved a task,
 alongside the existing outcome verifier which grades **whether** the repository
 ended up correct.
 

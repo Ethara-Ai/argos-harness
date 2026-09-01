@@ -15,7 +15,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSAY = REPO_ROOT / "assay"
-CORPUS = Path("/Users/anzar/Desktop/ori/milo-bench-samples")
+CORPUS = Path("/Users/anzar/Desktop/ori/argos-samples")
 
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -253,7 +253,7 @@ class TestTruthUnderSolution:
     def test_fixture_bundles_still_resolve(self):
         from assay.bundle import TaskBundle
 
-        fixtures = REPO_ROOT / "tests" / "fixtures" / "milo_bundles"
+        fixtures = REPO_ROOT / "tests" / "fixtures" / "argos_bundles"
         bundles = (
             [p for p in sorted(fixtures.glob("*-*")) if (p / "tests").is_dir()]
             if fixtures.is_dir()
@@ -261,7 +261,7 @@ class TestTruthUnderSolution:
         )
         if not bundles:
             pytest.skip(
-                "tests/fixtures/milo_bundles is not carried in this harness; "
+                "tests/fixtures/argos_bundles is not carried in this harness; "
                 "no pre-move bundles on disk to check back-compat against"
             )
         for root in bundles:

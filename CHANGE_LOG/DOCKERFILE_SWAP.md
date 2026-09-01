@@ -43,7 +43,7 @@ history.
 | Bundle `environment/Dockerfile` | Rendered from `task-template/environment/Dockerfile` (two-stage: python-fetch + `FROM <ECR per-PR image>` + referee install + `/workspace` symlink) | **Verbatim copy of the input task-folder Dockerfile** committed under `env_dockerfiles/{org}_m_{repo}/` (e.g. dapr's `Dockerfile.base`, XTLS's era-specific `Dockerfile{,1,2,3}` picked per PR via `map.json`) |
 | Template render code | The only path | **Preserved, fully live, as the fallback** for repos with no `env_dockerfiles/` entry (nothing deleted or commented — the branch is in `converter.build_task`, gated by `resolve_env_dockerfile`) |
 
-TL's position: the milo-bench-samples corpus Dockerfiles are **not** the shape the
+TL's position: the argos-samples corpus Dockerfiles are **not** the shape the
 client wants ("false" for Dockerfiles); the client should receive the original
 task-folder Dockerfile instead.
 
@@ -92,7 +92,7 @@ images rather than hand-written ranges. (Pinned in
 3. **Generic per era.** All bundles of one era carry byte-identical
    Dockerfiles; nothing PR-specific remains in the file (the per-PR ECR
    reference is gone).
-4. **Divergence from the milo-bench-samples corpus**, whose bundles all use the
+4. **Divergence from the argos-samples corpus**, whose bundles all use the
    ECR-template form. TL states the corpus is wrong on this point.
 5. **`MSB_REF` V-002 note** in the template ("SHA injected by converter") was
    already dead wiring (`--msb-ref` parsed but unused); moot on the input path,

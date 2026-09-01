@@ -49,7 +49,7 @@ from .rubric import RubricReport
 #
 # It does NOT guarantee "process can never overturn one target test". That claim
 # held only because it was checked on a nine-target task, where one test is worth
-# (1 - 2*ALPHA)/T = 0.10 exactly. Measured over 30 milo tasks, targets_total runs
+# (1 - 2*ALPHA)/T = 0.10 exactly. Measured over 30 argos tasks, targets_total runs
 # from 2 to 824 (median 5.5) and the claim fails on 9 of them: at T=824 one test
 # is worth 0.0011, so process outweighs 92 of them. Use alpha_for_targets() to
 # restore the per-test bound on a task where that matters, at the cost of making

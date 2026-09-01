@@ -108,7 +108,7 @@ class TestAuthorRouting:
         def fake_call(proxy, model, system, user, cached, max_tokens):
             captured["proxy"] = proxy
             captured["model"] = model
-            return "text", "", 0, 200
+            return "text", "", 0, 200, {}
 
         import assay.judge as assay_judge
 
@@ -126,7 +126,7 @@ class TestModelPlumbing:
 
         def fake_call(proxy, model, system, user, cached, max_tokens):
             captured["model"] = model
-            return "text", "", 0, 200
+            return "text", "", 0, 200, {}
 
         import assay.judge as assay_judge
 
@@ -140,7 +140,7 @@ class TestModelPlumbing:
 
         def fake_call(proxy, model, system, user, cached, max_tokens):
             captured["model"] = model
-            return "text", "", 0, 200
+            return "text", "", 0, 200, {}
 
         import assay.judge as assay_judge
 
@@ -151,7 +151,7 @@ class TestModelPlumbing:
     def test_author_flow_threads_resolved_model(self, tmp_path: Path, monkeypatch):
         """_author_from_skeleton resolves author_model from the config and
         hands it to both authoring stages (signature itself is pinned by
-        test_milo_pilot_regression's rejected-authoring test)."""
+        test_argos_pilot_regression's rejected-authoring test)."""
         seen: list[tuple[str, str]] = []
 
         def fake_narrate(bundle, *, log, author_model):

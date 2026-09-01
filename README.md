@@ -247,7 +247,7 @@ RUBRIC_ENABLE=1 bash run_eval.sh \
   --llm-config .llm_config/claude-code.json \
   --dataset path/to/dapr__dapr_dataset.jsonl \
   --ecr-prefix <account>.dkr.ecr.<region>.amazonaws.com/<repo-prefix> \
-  --lang go --data-dir ../milo-bench-dataset
+  --lang go --data-dir ../argos-dataset
 
 # macOS example (tortoise-orm, Python). EGRESS_FILTER_DISABLE=1 is required on
 # macOS and ONLY on macOS — it switches off the in-container anti-cheat egress
@@ -256,7 +256,7 @@ EGRESS_FILTER_DISABLE=1 RUBRIC_ENABLE=1 bash run_eval.sh \
   --llm-config .llm_config/claude-code.json \
   --dataset path/to/tortoise__tortoise-orm_dataset.jsonl \
   --ecr-prefix <account>.dkr.ecr.<region>.amazonaws.com/<repo-prefix> \
-  --lang python --data-dir ../milo-bench-dataset
+  --lang python --data-dir ../argos-dataset
 ```
 
 #### What you get if you pass nothing else
@@ -275,7 +275,7 @@ authoritative source if these tables ever drift from the script.
 
 | Variable | If unset | Purpose |
 |---|---|---|
-| `RUBRIC_ENABLE` | off | `1` turns on the milo bundle chain (export → author → judge → score). Without it you get the legacy `dataset/` + `trajectory/` harbor split instead of a bundle |
+| `RUBRIC_ENABLE` | off | `1` turns on the argos bundle chain (export → author → judge → score). Without it you get the legacy `dataset/` + `trajectory/` harbor split instead of a bundle |
 | `EGRESS_FILTER_DISABLE` | off (filter active) | `1` skips the in-container egress filter entirely. **macOS only** — the filter hard-fails under Docker Desktop. Leave unset on Linux: the filter is a denylist that only 403s the task's own repo/package for anti-cheat, and the LLM endpoint gets an explicit `iptables` carve-out, so it does not interfere with the bridge |
 | `HEADROOM_FALLBACK` | `true` | Fall back to the direct upstream if the headroom proxy fails to start |
 | `HEADROOM_STARTUP_TIMEOUT_S` | `240` | How long to wait for the headroom proxy to come up |
@@ -333,7 +333,7 @@ authoritative source if these tables ever drift from the script.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--data-dir PATH` | `<harness>/../milo-bench-dataset` | Local directory for staging output, keyed by dataset uuid. **It must already exist** and be a writable, searchable directory — the script validates all four conditions up front and refuses to create it, so a missing default aborts the run before any expensive work. No git operations are performed; publish manually with `cd <dir> && git add <uuid> && git commit && git push`. Any single file ≥100 MiB is dropped from the staged copy (GitHub hard limit) |
+| `--data-dir PATH` | `<harness>/../argos-dataset` | Local directory for staging output, keyed by dataset uuid. **It must already exist** and be a writable, searchable directory — the script validates all four conditions up front and refuses to create it, so a missing default aborts the run before any expensive work. No git operations are performed; publish manually with `cd <dir> && git add <uuid> && git commit && git push`. Any single file ≥100 MiB is dropped from the staged copy (GitHub hard limit) |
 
 #### Compression (experimental)
 
@@ -388,14 +388,14 @@ edit this to `172.17.0.1:<port>` — while `rubric-judge.json` uses `127.0.0.1`
 ### Outputs
 
 - `eval_outputs/` — per-instance working dirs (trajectory, eval, harbor, logs). Regenerable; safe to delete between runs.
-- `milo_bundles/<uuid>/` — the deliverable milo bundles (trajectory + verifier + rubric). Wiped between fresh runs.
-- `<data-dir>/<uuid>/` — the same bundle staged flat into the local staging directory (`milo-bench-samples` format), accumulating across runs; no git operations are performed — publish manually from there. (Legacy `dataset/`+`trajectory/` split is staged only when no bundle exists, e.g. `RUBRIC_ENABLE=0`.)
+- `argos_bundles/<uuid>/` — the deliverable argos bundles (trajectory + verifier + rubric). Wiped between fresh runs.
+- `<data-dir>/<uuid>/` — the same bundle staged flat into the local staging directory (`argos-samples` format), accumulating across runs; no git operations are performed — publish manually from there. (Legacy `dataset/`+`trajectory/` split is staged only when no bundle exists, e.g. `RUBRIC_ENABLE=0`.)
 
 Any single file ≥ 100 MiB is dropped from the staged copy (GitHub's hard file-size limit).
 
-> **Note on legacy names.** The bundle output dir (`milo_bundles/`), the default
-> staging dir (`../milo-bench-dataset`), and the on-disk bundle layout
-> (`milo-bench-samples` format) keep their original names: they are hardcoded in
+> **Note on legacy names.** The bundle output dir (`argos_bundles/`), the default
+> staging dir (`../argos-dataset`), and the on-disk bundle layout
+> (`argos-samples` format) keep their original names: they are hardcoded in
 > `run_eval.sh` / `run_custom_eval.sh`. Renaming them in documentation alone
 > would break every command above.
 

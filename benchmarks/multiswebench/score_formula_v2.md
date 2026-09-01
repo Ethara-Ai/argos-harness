@@ -53,7 +53,7 @@ Replace the current binary `score ∈ {0, 1}` (per `milo-gym/docs/specs/sections
 
 v2f is a **terminal test-outcome score**: a single scalar computed from the run report's final test state ($F_p$, $F_f$) against the dataset's gold transitions and the run's pre-fix baseline. It does not look at the trajectory — number of steps, reasoning quality, tool-use patterns, intermediate failures — and therefore cannot do **credit assignment across a long, sparse trajectory** by itself.
 
-For long-horizon agentic RL on Milo-Bench-class tasks, v2f is designed to be **one channel of a composite score**, not the only signal:
+For long-horizon agentic RL on Argos-class tasks, v2f is designed to be **one channel of a composite score**, not the only signal:
 
 | Channel | Source | Captures | Limitations |
 |---|---|---|---|
@@ -75,7 +75,7 @@ This decomposition is required by Audit #5 reviewer point 2: *"a continuous fina
 - A dense per-step shaping signal (use process channel)
 - A measure that closes the "test-pass ≠ correctness" gap (inherent limitation; mitigation is dataset curation, not formula)
 
-**Empirical applicability note (current MiloBench corpus)**: On the current 10-dataset / 8-trajectory MiloBench corpus, the pollution-correction machinery (baseline subtraction, pollution gate, R0-floored regression factor) is **inert**: all 8 trajectories show `T_baseline=0`, `pollution_rate=0`, `broken=0`, `factor=1.0`. v2g reduces to plain `recall = |T ∩ F_p| / |T|` on every instance. The constants (`R0=20`, `pollution_threshold=0.8`, `eff_min=3`) are tuned to the freya-350 distribution; they neither help nor hurt on the current corpus but remain in place as future-proofing for corpora that exhibit curation-vs-runtime baseline drift (starship-138 / testcontainers-java-8298 / rxdb-4758 patterns). For the current corpus, the v2g code path is functionally equivalent to plain recall × min-form factor. **T=1 edge case** (e.g., carbon-lang-6690): when a target set contains a single test, the continuous score degenerates to binary by construction (`score ∈ {0.0, 1.0}` since recall is either 0/1 or 1/1).
+**Empirical applicability note (current ArgosBench corpus)**: On the current 10-dataset / 8-trajectory ArgosBench corpus, the pollution-correction machinery (baseline subtraction, pollution gate, R0-floored regression factor) is **inert**: all 8 trajectories show `T_baseline=0`, `pollution_rate=0`, `broken=0`, `factor=1.0`. v2g reduces to plain `recall = |T ∩ F_p| / |T|` on every instance. The constants (`R0=20`, `pollution_threshold=0.8`, `eff_min=3`) are tuned to the freya-350 distribution; they neither help nor hurt on the current corpus but remain in place as future-proofing for corpora that exhibit curation-vs-runtime baseline drift (starship-138 / testcontainers-java-8298 / rxdb-4758 patterns). For the current corpus, the v2g code path is functionally equivalent to plain recall × min-form factor. **T=1 edge case** (e.g., carbon-lang-6690): when a target set contains a single test, the continuous score degenerates to binary by construction (`score ∈ {0.0, 1.0}` since recall is either 0/1 or 1/1).
 
 Promotion from Phase-1 binary-canonical to v2f-canonical (per `continuous_score_plan.md` §6) is gated on A/B validation that v2f provides at least non-degenerate training signal compared to binary; promotion to *sole RL score* is **not contemplated** by this spec. The composite design is the recommended path.
 
@@ -176,7 +176,7 @@ The pathology is **structurally real** but does not currently manifest in freya.
 
 **What v2f-attempt-1 did:** to close F4's non-determinism, sourced `T_p_baseline = dataset["test_patch_result"]["passed_tests"]` and computed `T_baseline = T ∩ T_p_baseline`. Claimed this would identify pre-existing-passing targets and adjusted recall would subtract them.
 
-**What Audit #5 found (empirical, against `freya/milo-bench/dataset/*.jsonl`)**:
+**What Audit #5 found (empirical, against `freya/argos/dataset/*.jsonl`)**:
 
 The bucketing rule at `multi_swe_bench/harness/report.py:130-138` is **per-observation**: in a single bucketing pass, a test name lands in exactly one of `{p2p, f2p, s2p, n2p}` based on its `(test_stage_status, fix_stage_status)` pair. A name in `gold_n2p` has `test_stage_status = NONE`, which is **definitionally not in that same observation's `test_patch_result.passed_tests`** (which requires `test_stage_status = PASS`). The dataset's gold dicts and the dataset's `test_patch_result` come from the **same curation-time observation**, so the intersection is empty by construction on every n2p name.
 
@@ -214,7 +214,7 @@ This is universal, language-independent, and structurally closes F2 without re-o
 
 ### 2.1 Inputs
 
-**From the DATASET record** (`freya/milo-bench/dataset/<instance_id>.jsonl`, single record per file):
+**From the DATASET record** (`freya/argos/dataset/<instance_id>.jsonl`, single record per file):
 
 | Symbol | Source field | Meaning |
 |---|---|---|
@@ -900,7 +900,7 @@ v2e is shipped in `scripts/harbor/converter.py::compute_score_v2d` + `tests/test
 
 2. **No changes** to `multi_swe_bench/harness/report.py` — formula reads dataset and raw run arrays only.
 
-3. **No changes** to upstream `multi-swe-bench` fork — v2e is contained entirely in milo-bench converter.
+3. **No changes** to upstream `multi-swe-bench` fork — v2e is contained entirely in argos converter.
 
 ### 8.2 Test harness — **STATUS: SHIPPED in v2e**
 
@@ -988,7 +988,7 @@ Oracle finding **N3** specifically rejected a strict-fallback "drop n2p tests th
 
 ### 10.3 Plumbing
 
-The dataset path resolves via `freya/milo-bench/dataset/<instance_id>.jsonl` (single record per file). The `lang` discriminator lives at the top level of each dataset record but is **not consumed by the formula** in v2f — it remains in diagnostics for downstream stratification and analysis only.
+The dataset path resolves via `freya/argos/dataset/<instance_id>.jsonl` (single record per file). The `lang` discriminator lives at the top level of each dataset record but is **not consumed by the formula** in v2f — it remains in diagnostics for downstream stratification and analysis only.
 
 ### 10.3.1 Per-language M-2 exclusion (v2f F1 closure)
 
@@ -1209,7 +1209,7 @@ These are all out-of-scope for the score formula proper; they live in adjacent l
 
 Audit #5 was a mid-flight correction caught between spec finalization and code implementation. An external reviewer challenged a specific load-bearing claim in the v2f-attempt-1 spec — that sourcing `T_p_baseline` from the dataset would close F4 (determinism) without breaking F2 (do-nothing closure). The reviewer's argument was that `T ∩ dataset["test_patch_result"]["passed_tests"]` is **structurally empty** for any name in `gold_n2p`, by the per-observation bucketing rule at `report.py:130-138`. If true, v2f-attempt-1's adjusted recall would reduce to v2e's raw recall on n2p-only instances — the very 51% pollution-prone slice F2 was written to close.
 
-Empirical verification (explore agent, against `/Users/macbookpro/Documents/Abhay/Projects/Engineering/milobench/freya/milo-bench/dataset/` and `/tmp/oracle_v2e_audit/`) confirmed the reviewer:
+Empirical verification (explore agent, against `/Users/macbookpro/Documents/Abhay/Projects/Engineering/milobench/freya/argos/dataset/` and `/tmp/oracle_v2e_audit/`) confirmed the reviewer:
 
 | Instance | \|T\| | T ∩ dataset.tpr.passed | T ∩ run.tpr.passed | v2f-attempt-1 do-nothing recall | v2f-corrected do-nothing recall |
 |---|---|---|---|---|---|

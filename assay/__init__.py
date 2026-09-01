@@ -1,4 +1,4 @@
-"""ASSAY - process verification for Milo-Bench (Aurora).
+"""ASSAY - process verification for Argos (Aurora).
 
 Two channels grade *how* a run solved a task, alongside the existing outcome
 verifier which grades *whether* the repository ended up correct:

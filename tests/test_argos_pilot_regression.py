@@ -1,6 +1,6 @@
 """Phase-E pins: what the corpus-exact scorer says about our two pilot bundles.
 
-The fixtures under tests/fixtures/milo_bundles are the tortoise 538 and 943
+The fixtures under tests/fixtures/argos_bundles are the tortoise 538 and 943
 bundles exactly as the live pipeline produced them (export-bundle -> author-milo
 -> assay judge -> assay score --write), with the sonnet-5 verdicts recorded.
 
@@ -37,7 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # The verdicts were recorded by the single sonnet-5 seat; scoring must expect
 # the same roster or the runs read as unjudged.
 ENV = {**os.environ, "ASSAY_COUNCIL": "sonnet-5=claude-sonnet-5"}
-FIXTURES = REPO_ROOT / "tests" / "fixtures" / "milo_bundles"
+FIXTURES = REPO_ROOT / "tests" / "fixtures" / "argos_bundles"
 
 U538 = "9a959823-e9ff-418e-a2aa-297a9a0735fa"  # tortoise__tortoise-orm-538
 U943 = "150c282e-330b-492e-bcaf-1017bbfff2e8"  # tortoise__tortoise-orm-943

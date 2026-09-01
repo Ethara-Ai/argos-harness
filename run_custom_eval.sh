@@ -36,7 +36,7 @@ FORCE=false
 HARBOR_OUT=""
 HARBOR_DATASET_DIR=""
 DATA_PUBLISH_DIR=""
-DATA_REPO="https://github.com/Ethara-Ai/milo-bench-dataset"
+DATA_REPO="https://github.com/Ethara-Ai/argos-dataset"
 GIT_BRANCH=""
 NO_PUSH=false
 ENV_FILE=""
@@ -105,10 +105,10 @@ Publishing (one local commit is created for the dataset, then pushed at end):
   <uuid> is the dataset record's required uuid field. Local eval_outputs/ on
   disk is left untouched -- only the harbor output is published.
   --data-dir PATH           Local clone of the dataset repo (created on start if missing)
-                            (default: <script dir>/../milo-bench-dataset/)
+                            (default: <script dir>/../argos-dataset/)
   --data-repo URL           Dataset repo URL; cloned to --data-dir on start if missing,
                             otherwise the existing clone's origin must match this URL
-                            (default: https://github.com/Ethara-Ai/milo-bench-dataset)
+                            (default: https://github.com/Ethara-Ai/argos-dataset)
   --git-branch NAME         Branch to push to                          [default: current branch]
   --env-file PATH           .env file to read the GitHub token from
                             (default: <repo root>/.env, else <script dir>/.env)
@@ -683,7 +683,7 @@ if [[ -z "$GIT_TOKEN" ]]; then
 fi
 
 if [[ -z "$DATA_PUBLISH_DIR" ]]; then
-    DATA_PUBLISH_DIR="${SCRIPT_DIR}/../milo-bench-dataset"
+    DATA_PUBLISH_DIR="${SCRIPT_DIR}/../argos-dataset"
 fi
 
 DATA_REPO_ROOT=""

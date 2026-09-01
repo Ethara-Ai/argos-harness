@@ -20,7 +20,7 @@ class TestRunEvalWiring:
     def test_rubric_block_is_opt_in(self, run_eval_src: str):
         assert "RUBRIC_ENABLE:-0" in run_eval_src  # default OFF: zero behavior change
 
-    def test_milo_pipeline_order(self, run_eval_src: str):
+    def test_argos_pipeline_order(self, run_eval_src: str):
         """export-bundle -> author-milo (conditional) -> assay judge -> score."""
         export = run_eval_src.index("multiswebench-rubric export-bundle")
         author = run_eval_src.index("multiswebench-rubric author-milo")
@@ -48,7 +48,7 @@ class TestRunEvalWiring:
         # score must be told where judge wrote the verdict store
         score_call = run_eval_src[run_eval_src.index('score --task "$DS_UUID"') :]
         score_call = score_call[: score_call.index("rrc=$?")]
-        assert '--verdicts "${MILO_DEST}/verdicts"' in score_call
+        assert '--verdicts "${ARGOS_DEST}/verdicts"' in score_call
         assert "--write" in score_call
 
     def test_council_is_derived_from_judge_config(self, run_eval_src: str):
@@ -71,16 +71,16 @@ class TestRunEvalWiring:
         assert "multiswebench-rubric attach" not in run_eval_src
         assert "multiswebench-rubric judge" not in run_eval_src
 
-    def test_publish_stages_flat_milo_bundle_first(self, run_eval_src: str):
-        """stage_dataset prefers the finished milo bundle staged FLAT at the
-        publish-base root (milo-bench-samples format), with the legacy harbor
+    def test_publish_stages_flat_argos_bundle_first(self, run_eval_src: str):
+        """stage_dataset prefers the finished argos bundle staged FLAT at the
+        publish-base root (argos-samples format), with the legacy harbor
         dataset/+trajectory/ split kept as the no-bundle fallback."""
         fn = run_eval_src.index("stage_dataset() {")
         fn_end = run_eval_src.index("process_dataset()", fn)
         body = run_eval_src[fn:fn_end]
         # bundle source is computed from globals (set -u safe), per-uuid dir only
         src_idx = body.index(
-            'bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/milo_bundles}/${uuid}"'
+            'bundle_src="${RUBRIC_BUNDLE_DEST:-${SCRIPT_DIR}/argos_bundles}/${uuid}"'
         )
         # the copy uses the per-uuid dir, so the sibling verdicts/ store can
         # never leak into the publish clone
@@ -90,19 +90,19 @@ class TestRunEvalWiring:
         legacy_idx = body.index('cp -R "$harbor_out/task/."')
         assert src_idx < copy_idx < legacy_idx
 
-    def test_staging_publish_contract(self, run_eval_src: str):
-        """run_eval.sh stages into a clone of the publish repo (--data-dir),
-        verifying the GitHub token via the API, committing per dataset, and
-        pushing at the end -- with --no-push as the local-only opt-out."""
-        assert 'DATA_PUBLISH_DIR="${SCRIPT_DIR}/../milo-bench-dataset"' in run_eval_src
-        # Publish repo is cloned on start when the data-dir is missing
-        assert "git clone" in run_eval_src
-        # GitHub API verification of the token before any expensive work
-        assert "api.github.com" in run_eval_src
-        # Local-only opt-out short-circuits token verification and pushing
-        assert '[[ "$NO_PUSH" == true ]] && return 0' in run_eval_src
-        # Final push ships per-dataset commits at the very end
-        assert 'push "$_target" "HEAD:$GIT_BRANCH"' in run_eval_src
+    def test_staging_contract(self, run_eval_src: str):
+        """run_eval.sh stages into --data-dir and stops there.
+
+        Publishing moved to run_custom_eval.sh, so the graded path carries no
+        remote credentials and cannot reach a network. The token plumbing is
+        asserted absent, not merely unused, so it cannot return by flipping a
+        flag.
+        """
+        assert 'DATA_PUBLISH_DIR="${SCRIPT_DIR}/../argos-dataset"' in run_eval_src
+        assert 'PUBLISH_BASE="$DATA_PUBLISH_DIR"' in run_eval_src
+        assert "api.github.com" not in run_eval_src
+        for symbol in ("GIT_TOKEN", "GIT_BRANCH", "PUSH_ENABLED", "NO_PUSH"):
+            assert symbol not in run_eval_src
 
     def test_syntax_parses(self):
         import subprocess

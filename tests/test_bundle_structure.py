@@ -1,7 +1,7 @@
 """Structure-diff: our generated bundles vs the reference corpus.
 
 Compares a fully authored + judged pilot bundle (fixture) against a reference
-milo-bench-samples bundle for structural equality: same file set, same JSON key
+argos-samples bundle for structural equality: same file set, same JSON key
 sets AND key order, same enums/templates. Values legitimately differ (different
 task, model, scores); structure must not.
 """
@@ -16,8 +16,8 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FIXTURES = REPO_ROOT / "tests" / "fixtures" / "milo_bundles"
-CORPUS = Path("/Users/anzar/Desktop/ori/milo-bench-samples")
+FIXTURES = REPO_ROOT / "tests" / "fixtures" / "argos_bundles"
+CORPUS = Path("/Users/anzar/Desktop/ori/argos-samples")
 
 OURS = FIXTURES / "9a959823-e9ff-418e-a2aa-297a9a0735fa"  # tortoise 538
 REF = CORPUS / "016372a9-f7b9-4e69-919c-15c286423dc9"

@@ -255,10 +255,8 @@ watch_eval.py
 *.bak.*
 *.bak_*
 
-# Milo-format delivery bundles (generated per run; must sit under the repo so
+# Argos-format delivery bundles (generated per run; must sit under the repo so
 # the emitted test_output.py can self-locate the vendored assay package).
-# Root-anchored: tests/fixtures/milo_bundles IS committed. The old
-# /milo_bundles/ name stays ignored so pre-rename output dirs don't clutter
-# git status.
+# Root-anchored: tests/fixtures/argos_bundles IS committed. The old
 /argos_bundles/
 /milo_bundles/

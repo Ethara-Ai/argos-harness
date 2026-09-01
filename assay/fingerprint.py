@@ -19,7 +19,7 @@ from pathlib import Path
 
 FINGERPRINT_KEY = "bundle_fingerprint"
 
-# The corpus generator (milo-bench-samples) computed the prose digest over the
+# The corpus generator (argos-samples) computed the prose digest over the
 # PRE-rename section names — three of which never exist in a shipped TRUTH.md,
 # so they digest as "". Reproduced verbatim here (verified against corpus
 # fingerprint f56ae50300f4f8ae, bundle 016372a9): changing this list
