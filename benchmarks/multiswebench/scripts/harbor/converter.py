@@ -1625,8 +1625,8 @@ def build_trajectory(
     path_slug = _path_slug(model)
     is_oracle = agent_tag == "oracle"
     trial_name = f"{sanitized_id}__{random_trial_suffix()}"
-    trials_dir = f"/tmp/milo_jobs/mm-{agent_tag}"
-    task_path = f"/tmp/milo_tasks/{sanitized_id}"
+    trials_dir = f"/tmp/argos_jobs/mm-{agent_tag}"
+    task_path = f"/tmp/argos_tasks/{sanitized_id}"
     conv_id: str | None = None
     if history:
         first_value = history[0].get("value")
