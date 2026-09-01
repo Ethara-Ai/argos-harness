@@ -137,7 +137,7 @@ class TestEntryPoint:
         assert cfg["base_url"] == "http://127.0.0.1:8766"
         assert "temperature" not in cfg  # Claude 5 rejects the parameter
         # both are prefix-routed litellm ids (anthropic/ -> :8765, openai/ -> :8766).
-        # Current batch splits them: author opus-4.8 on Claude, judge gpt-5.6-sol
+        # Current batch splits them: author opus-5 on Claude, judge gpt-5.6-sol
         # on Codex -- an openai/ judge needs the "responses/" segment here.
         assert cfg["judge_model"] == "openai/responses/gpt-5.6-sol"
-        assert cfg["author_model"] == "anthropic/claude-opus-4-8"
+        assert cfg["author_model"] == "anthropic/claude-opus-5"
