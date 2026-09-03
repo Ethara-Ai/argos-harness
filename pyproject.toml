@@ -129,7 +129,18 @@ multi-swe-bench = { git = "https://github.com/Ethara-Ai/multi-swe-bench.git",  r
 litellm = { git = "https://github.com/Ethara-Ai/litellm.git", rev = "a276b06a358b4670feda1ccfbe818cfc6be9da0c" }
 
 [tool.uv]
-override-dependencies = ["litellm"]
+# Security floors. These packages are transitive and nothing upstream caps them,
+# so relaxing a floor here silently reintroduces the advisory:
+#   starlette >=1.3.1  PYSEC-2026-161 Host-header path injection -> authz bypass
+#                      (reachable: both OAuth bridges bind 0.0.0.0), -2281 SSRF
+#   aiohttp   >=3.14.1 PYSEC-2026-2104 RCE via CookieJar.load(), -237 TLS SNI bypass
+#   urllib3   >=2.7.0  PYSEC-2026-142 decompression bomb, -141 cross-origin header leak
+override-dependencies = [
+  "litellm",
+  "starlette>=1.3.1",
+  "aiohttp>=3.14.1",
+  "urllib3>=2.7.0",
+]
 
 [tool.uv.workspace]
 members = [
