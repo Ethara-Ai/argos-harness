@@ -66,9 +66,31 @@ MODEL_PRICES_PER_MTOK = [
     ("claude-haiku", 1.0, 5.0),
 ]
 
+# OpenAI list prices per million tokens, mirroring _MODEL_PRICES_PER_MTOK in
+# proxy/codex_bridge/bridge.py -- the bridge is the authority, this table only
+# serves the fallback below for verdicts judged before the bridge emitted
+# x-litellm-response-cost (every gpt judge line reported 0 until it did, because
+# the loop above fell through and returned 0.0). Cache reads are 0.1x input on
+# every entry, the same ratio the formula already applies, so only the fold
+# differs: OpenAI counts cached tokens INSIDE input_tokens, Anthropic reports
+# them outside. See _folds_cache_into_input.
+OPENAI_PRICES_PER_MTOK = [
+    ("gpt-5.6-sol", 4.0, 20.0),
+    ("gpt-5.6-terra", 2.0, 12.0),
+    ("gpt-5.6-luna", 0.2, 1.2),
+    ("gpt-5.3-codex", 1.75, 14.0),
+    ("gpt-5.2-codex", 1.75, 14.0),
+    ("gpt-5.5", 5.0, 30.0),
+]
+
+
+def _folds_cache_into_input(model: str) -> bool:
+    """True when the provider counts cached tokens inside its input total."""
+    return any(n in (model or "") for n, _, _ in OPENAI_PRICES_PER_MTOK)
+
 
 def _notional_cost_usd(model: str, usage: dict) -> float:
-    for needle, p_in, p_out in MODEL_PRICES_PER_MTOK:
+    for needle, p_in, p_out in MODEL_PRICES_PER_MTOK + OPENAI_PRICES_PER_MTOK:
         if needle in (model or ""):
             break
     else:
@@ -198,7 +220,14 @@ def _judge_lines(bundle_dir: Path, run_name: str) -> list[dict]:
             or _notional_cost_usd(
                 m,
                 {
-                    "prompt_tokens": a["in"] + a["cache_read"] + a["cache_write"],
+                    # _notional_cost_usd wants litellm shape, where prompt_tokens
+                    # folds both cache tiers in. assay keeps Anthropic's outside
+                    # input_tokens and OpenAI's inside, so only the Anthropic
+                    # aggregate needs them added back; adding them for OpenAI
+                    # would bill the cached slice at the full input rate as well.
+                    "prompt_tokens": a["in"]
+                    if _folds_cache_into_input(m)
+                    else a["in"] + a["cache_read"] + a["cache_write"],
                     "completion_tokens": a["out"],
                     "cache_read_tokens": a["cache_read"],
                     "cache_write_tokens": a["cache_write"],

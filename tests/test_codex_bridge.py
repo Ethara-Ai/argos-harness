@@ -467,3 +467,128 @@ class TestAppRouting:
             headers={"content-type": "application/json"},
         )
         assert r.status_code == 400
+
+
+class TestResponseCost:
+    """The x-litellm-response-cost header, sibling of the Claude bridge's.
+
+    assay's extract_usage reads cost ONLY from this header, so without it every
+    codex-judged verdict recorded cost_usd 0.
+    """
+
+    def test_prices_a_real_verdict_usage_block(self):
+        from codex_bridge.bridge import _response_cost_usd
+
+        # observed live: the first gpt-5.6-sol re-judge of a sample task
+        cost = _response_cost_usd(
+            {
+                "model": "gpt-5.6-sol",
+                "usage": {"input_tokens": 24486, "output_tokens": 177},
+            }
+        )
+        assert cost == pytest.approx((24486 * 4.0 + 177 * 20.0) / 1_000_000)
+
+    def test_cached_tokens_are_discounted_not_added(self):
+        # OpenAI folds cached tokens INTO input_tokens (Anthropic keeps them
+        # out), so the cached slice must be re-priced, never priced twice.
+        from codex_bridge.bridge import _response_cost_usd
+
+        cost = _response_cost_usd(
+            {
+                "model": "gpt-5.6-sol",
+                "usage": {
+                    "input_tokens": 24486,
+                    "output_tokens": 177,
+                    "input_tokens_details": {"cached_tokens": 20000},
+                },
+            }
+        )
+        expected = (4486 * 4.0 + 20000 * 0.4 + 177 * 20.0) / 1_000_000
+        assert cost == pytest.approx(expected)
+
+    def test_cached_never_exceeds_input(self):
+        from codex_bridge.bridge import _response_cost_usd
+
+        cost = _response_cost_usd(
+            {
+                "model": "gpt-5.6-sol",
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 0,
+                    "input_tokens_details": {"cached_tokens": 999},
+                },
+            }
+        )
+        assert cost == pytest.approx(100 * 0.4 / 1_000_000)
+
+    def test_unknown_model_returns_none(self):
+        # None -> no header -> assay records 0, which reads as "unknown".
+        # A guessed number would read as truth.
+        from codex_bridge.bridge import _response_cost_usd
+
+        assert (
+            _response_cost_usd(
+                {"model": "gpt-9-unreleased", "usage": {"input_tokens": 10}}
+            )
+            is None
+        )
+
+    def test_missing_usage_returns_none(self):
+        from codex_bridge.bridge import _response_cost_usd
+
+        assert _response_cost_usd({"model": "gpt-5.6-sol"}) is None
+
+    def test_aggregated_response_carries_the_header(self, monkeypatch):
+        from codex_bridge.bridge import build_app
+        from fastapi.testclient import TestClient
+
+        doc = {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_1",
+                "model": "gpt-5.6-sol",
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+                "usage": {"input_tokens": 1000, "output_tokens": 100},
+            },
+        }
+        sse = f"event: response.completed\ndata: {json.dumps(doc)}\n\n".encode()
+
+        class FakeProvider(cred.CodexCredentialProvider):
+            def get_access_token(self) -> str:
+                return "tok-abc"
+
+            def get_account_id(self):
+                return "acct-1"
+
+            def force_reload(self) -> None:
+                pass
+
+        def fake_stream(self, method, url, **kw):
+            class CM:
+                async def __aenter__(inner):
+                    class Up:
+                        status_code = 200
+                        headers = {"content-type": "text/event-stream"}
+
+                        async def aiter_bytes(u):
+                            yield sse
+
+                    return Up()
+
+                async def __aexit__(inner, *a):
+                    return False
+
+            return CM()
+
+        monkeypatch.setattr("httpx.AsyncClient.stream", fake_stream)
+        client = TestClient(build_app(FakeProvider()))
+        r = client.post("/responses", json={"model": "gpt-5.6-sol", "stream": False})
+        assert r.status_code == 200
+        expected = (1000 * 4.0 + 100 * 20.0) / 1_000_000
+        assert float(r.headers["x-litellm-response-cost"]) == pytest.approx(expected)

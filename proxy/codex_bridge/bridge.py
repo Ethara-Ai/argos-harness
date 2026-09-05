@@ -73,6 +73,54 @@ STRIP_HEADERS_OUT = frozenset(
     {"content-encoding", "transfer-encoding", "connection", "content-length"}
 )
 
+# OpenAI API list prices per million tokens, keyed by model-id substring (first
+# match wins, so longer/more-specific keys come first). The sibling Claude bridge
+# computes the same thing for :8765; without it every codex verdict recorded
+# cost_usd 0, because assay's extract_usage reads cost ONLY from the
+# x-litellm-response-cost header and refuses to guess.
+#
+# Subscription (ChatGPT OAuth) traffic has no metered cost; these are the
+# equivalent direct-API list prices so downstream accounting has a number. Values
+# are the vendor's own `openai/<model>` entries -- reseller/region variants
+# (azure/*, aws-mantle/*, *@eu, *-discounted) quote different numbers and are
+# deliberately NOT modelled here.
+_MODEL_PRICES_PER_MTOK: list[tuple[str, float, float, float]] = [
+    # (needle, input, output, cache_read)
+    ("gpt-5.6-sol", 4.0, 20.0, 0.4),
+    ("gpt-5.6-terra", 2.0, 12.0, 0.2),
+    ("gpt-5.6-luna", 0.2, 1.2, 0.02),
+    ("gpt-5.3-codex", 1.75, 14.0, 0.175),
+    ("gpt-5.2-codex", 1.75, 14.0, 0.175),
+    ("gpt-5.5", 5.0, 30.0, 0.5),
+]
+
+
+def _response_cost_usd(doc: dict[str, Any]) -> Optional[float]:
+    """Notional API-list-price cost of one Responses doc, from its usage block.
+
+    Unlike Anthropic, OpenAI folds cached tokens INTO ``input_tokens``, so the
+    cached slice is priced at the cache-read rate and subtracted from the full
+    rate rather than added on top. Returns None when the model is unknown or
+    there is no usage to price -- absent header means cost 0, not a wrong number.
+    """
+    model = str(doc.get("model") or "")
+    usage = doc.get("usage") or {}
+    if not model or not usage:
+        return None
+    for needle, p_in, p_out, p_cache in _MODEL_PRICES_PER_MTOK:
+        if needle in model:
+            break
+    else:
+        return None
+    total_in = usage.get("input_tokens") or 0
+    cached = (usage.get("input_tokens_details") or {}).get("cached_tokens") or 0
+    cached = min(cached, total_in)
+    return (
+        (total_in - cached) * p_in
+        + cached * p_cache
+        + (usage.get("output_tokens") or 0) * p_out
+    ) / 1_000_000
+
 
 def _upstream_base() -> str:
     return os.environ.get("AURORA_CODEX_UPSTREAM", UPSTREAM_DEFAULT).rstrip("/")
@@ -397,7 +445,13 @@ async def _aggregate_response(cm, upstream, client):
 
     agg = aggregate(events)
     if agg.ok and agg.response is not None:
-        return JSONResponse(agg.response, status_code=200)
+        # Cost telemetry, same header the Claude bridge emits (assay's
+        # extract_usage reads it into the verdict's usage.cost_usd).
+        resp_headers: dict[str, str] = {}
+        cost = _response_cost_usd(agg.response)
+        if cost is not None:
+            resp_headers["x-litellm-response-cost"] = f"{cost:.10f}"
+        return JSONResponse(agg.response, status_code=200, headers=resp_headers)
     if agg.kind == "failed":
         from .errors import classify_failed_event
 
