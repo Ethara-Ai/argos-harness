@@ -56,10 +56,31 @@ def certify_from_record(config: dict) -> CertifyResult:
         _ids(config.get(k)) for k in ("f2p_tests", "n2p_tests", "p2p_tests")
     )
 
+    base_seen = (
+        set(base.get("passed_tests") or [])
+        | set(base.get("failed_tests") or [])
+        | set(base.get("skipped_tests") or [])
+    )
+
+    # An instance whose only targets are n2p needs no observation of a target
+    # failing, because an n2p test does not exist before the fix -- there is
+    # nothing to observe it fail. The baseline run is then sufficient evidence
+    # of the "before" state: every n2p target absent from it, every p2p target
+    # passing in it. Instances carrying an f2p target still require the test
+    # stage, since only that stage can witness the target failing.
+    baseline_only = bool(
+        base_seen
+        and not seen
+        and n2p
+        and not f2p
+        and not (set(n2p) & base_seen)
+        and not (set(p2p) - set(base.get("passed_tests") or []))
+    )
+
     details = []
     if not (base.get("passed_tests") or base.get("failed_tests")):
         details.append("no baseline run recorded (run_result is empty)")
-    if not seen:
+    if not seen and not baseline_only:
         details.append("no test_patch_result recorded")
     if not (f2p or n2p):
         details.append("no target tests declared")
@@ -69,12 +90,24 @@ def certify_from_record(config: dict) -> CertifyResult:
             f"{len(missing)} f2p test(s) did not fail with the test patch "
             f"applied, first={missing[0]}"
         )
-    early = [t for t in n2p if t in seen]
+    early = [t for t in n2p if t in (base_seen if baseline_only else seen)]
     if early:
         details.append(
             f"{len(early)} n2p test(s) already existed before the fix, first={early[0]}"
         )
-    broken = [t for t in p2p if t not in passed]
+    # A p2p test that is absent from the test-patch report but was passing in
+    # the baseline run is the CBC case multi_swe_bench.harness.report documents:
+    # "was passing at baseline, hidden by test.patch, restored". Upstream files
+    # those as p2p deliberately (reclassified_from_target). Demanding they also
+    # appear in test_patch_result contradicts the bucketing that produced them
+    # and voids otherwise sound instances. A p2p test that *failed* or *skipped*
+    # with the test patch applied is still a genuine break and still rejected.
+    base_passed = set(base.get("passed_tests") or [])
+    if baseline_only:
+        passed = set(base.get("passed_tests") or [])
+        seen = base_seen
+    hidden = [t for t in p2p if t not in seen and t in base_passed]
+    broken = [t for t in p2p if t not in passed and t not in hidden]
     if broken:
         details.append(
             f"{len(broken)} p2p test(s) were not passing at baseline, first={broken[0]}"
@@ -88,8 +121,18 @@ def certify_from_record(config: dict) -> CertifyResult:
         1.0,
         [
             f"f2p={len(f2p)} all failed with the test patch",
-            f"n2p={len(n2p)} all absent before the fix",
-            f"p2p={len(p2p)} all passing",
+            f"n2p={len(n2p)} all absent before the fix"
+            + (
+                " (baseline evidence; test stage reported nothing)"
+                if baseline_only
+                else ""
+            ),
+            f"p2p={len(p2p)} all passing"
+            + (
+                f" ({len(hidden)} hidden by the test patch, passing at baseline)"
+                if hidden
+                else ""
+            ),
         ],
         "recorded_test_results",
     )
