@@ -349,5 +349,117 @@ class HeadlineScoreChannelTests(unittest.TestCase):
         self.assertLess(r["scores"]["score"], 1.0)
 
 
+class GradleNameCanonicalisationTests(unittest.TestCase):
+    """The Gradle parser spells a test ``Class > method()``; gold spells it
+    ``pkg.Class.method()``. Compared verbatim they never intersect."""
+
+    GOLD = [
+        "run.halo.app.extension.gc.GcWatcherTest.shouldDisposeHookCorrectly()",
+        "run.halo.app.extension.gc.GcWatcherTest.shouldNotAddIntoQueueWhenDisposed()",
+        "run.halo.app.extension.gc.GcReconcilerTest.shouldDeleteCorrectly()",
+        "run.halo.app.extension.UnstructuredTest.shouldGetFinalizersCorrectly()",
+    ]
+    DISPLAY = [
+        "GcWatcherTest > shouldDisposeHookCorrectly()",
+        "GcWatcherTest > shouldNotAddIntoQueueWhenDisposed()",
+        "GcReconcilerTest > shouldDeleteCorrectly()",
+        "UnstructuredTest > shouldGetFinalizersCorrectly()",
+    ]
+
+    def test_display_names_are_credited_against_gold_targets(self) -> None:
+        ds = _ds(n2p=self.GOLD, lang="java")
+        r = compute_score_v2g(
+            ds, _report(fix_passed=self.DISPLAY, test_passed=["some.other.Test.a()"])
+        )
+        self.assertEqual(r["status"], "scored")
+        self.assertEqual(r["diagnostics"]["targets_hit"], 4)
+        self.assertEqual(r["scores"]["score_continuous_v2"], 1.0)
+        self.assertEqual(r["scores"]["score_binary"], 1.0)
+
+    def test_regression_before_fix_scored_zero(self) -> None:
+        """Guards the exact defect: verbatim comparison yielded 0.0, not a refusal."""
+        ds = _ds(n2p=self.GOLD, lang="java")
+        r = compute_score_v2g(
+            ds, _report(fix_passed=self.DISPLAY, test_passed=["some.other.Test.a()"])
+        )
+        self.assertNotEqual(r["scores"]["score_continuous_v2"], 0.0)
+
+    def test_partial_hit_is_not_rounded_up(self) -> None:
+        ds = _ds(n2p=self.GOLD, lang="java")
+        r = compute_score_v2g(
+            ds,
+            _report(
+                fix_passed=self.DISPLAY[:2],
+                fix_failed=self.DISPLAY[2:],
+                test_passed=["some.other.Test.a()"],
+            ),
+        )
+        self.assertEqual(r["status"], "scored")
+        self.assertEqual(r["diagnostics"]["targets_hit"], 2)
+        self.assertEqual(r["scores"]["score_binary"], 0.0)
+
+    def test_display_name_baseline_counts_as_pollution(self) -> None:
+        """Canonicalisation applies to the baseline stage too, or a Gradle run
+        with pre-passing targets would look clean."""
+        ds = _ds(n2p=self.GOLD, lang="java")
+        r = compute_score_v2g(
+            ds, _report(fix_passed=self.DISPLAY, test_passed=self.DISPLAY)
+        )
+        self.assertEqual(r["status"], "polluted_dataset")
+        self.assertEqual(r["diagnostics"]["t_baseline_total"], 4)
+
+    def test_nested_and_displayname_shapes_are_left_alone(self) -> None:
+        """``Outer > Inner > method()`` is excluded: two can share one tail."""
+        gold = ["pkg.CorsTest.shouldAllow()"]
+        ds = _ds(n2p=gold, lang="java")
+        r = compute_score_v2g(
+            ds,
+            _report(
+                fix_passed=["CorsTest > RequestCorsEnabledApi > shouldAllow()"],
+                test_passed=["some.other.Test.a()"],
+            ),
+        )
+        self.assertEqual(r["diagnostics"]["targets_hit"], 0)
+
+    def test_ambiguous_tail_is_not_guessed(self) -> None:
+        """Same Class.method in two packages: neither is claimed."""
+        gold = ["a.pkg.DupTest.same()", "b.pkg.DupTest.same()"]
+        ds = _ds(n2p=gold, lang="java")
+        r = compute_score_v2g(
+            ds,
+            _report(
+                fix_passed=["DupTest > same()"], test_passed=["some.other.Test.a()"]
+            ),
+        )
+        self.assertEqual(r["diagnostics"]["targets_hit"], 0)
+
+    def test_exact_match_corpora_are_untouched(self) -> None:
+        """pytest/go/surefire names already agree with gold; nothing is rewritten."""
+        gold = ["tests/test_x.py::test_a", "tests/test_x.py::test_b"]
+        ds = _ds(n2p=gold, lang="python")
+        r = compute_score_v2g(
+            ds, _report(fix_passed=gold, test_passed=["tests/test_y.py::test_c"])
+        )
+        self.assertEqual(r["status"], "scored")
+        self.assertEqual(r["diagnostics"]["targets_hit"], 2)
+
+    def test_p2p_regression_detected_through_display_names(self) -> None:
+        """A broken p2p must still be caught when the run spells it Gradle-style."""
+        gold_t = ["pkg.TargetTest.hits()"]
+        gold_p = [f"pkg.KeepTest.k{i}()" for i in range(30)]
+        ds = _ds(n2p=gold_t, p2p=gold_p, lang="java")
+        r = compute_score_v2g(
+            ds,
+            _report(
+                fix_passed=["TargetTest > hits()"],
+                fix_failed=["KeepTest > k0()"],
+                test_passed=["some.other.Test.a()"],
+            ),
+        )
+        self.assertEqual(r["status"], "scored")
+        self.assertEqual(r["diagnostics"]["broken_p2p_count"], 1)
+        self.assertEqual(r["scores"]["score_binary"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -83,6 +83,72 @@ def _stage_count_drift(stage: dict[str, Any]) -> bool:
     return False
 
 
+_GRADLE_DISPLAY_SEP = " > "
+
+
+def _flat_gradle_tail(name: str) -> str | None:
+    """``Class.method`` for a flat Gradle display name, else ``None``.
+
+    Only the flat ``Class > method()`` shape is recognised. Nested-class and
+    ``@DisplayName`` shapes (``Outer > Inner > method()``) are deliberately
+    excluded: two of those can share one ``Class.method`` tail, and collapsing
+    both onto a single gold name would silently drop a test from the set.
+    """
+    parts = name.strip().split(_GRADLE_DISPLAY_SEP)
+    if len(parts) != 2:
+        return None
+    cls, method = parts[0].strip(), parts[1].strip()
+    if not cls or not method:
+        return None
+    return f"{cls}.{method[:-2] if method.endswith('()') else method}"
+
+
+def _dotted_tail(name: str) -> str | None:
+    """``Class.method`` for a fully-qualified dotted gold name, else ``None``."""
+    n = name.strip()
+    if n.endswith("()"):
+        n = n[:-2]
+    parts = n.split(".")
+    if len(parts) < 2 or not parts[-1] or not parts[-2]:
+        return None
+    return f"{parts[-2]}.{parts[-1]}"
+
+
+def _gradle_alias_map(gold_names: set[str]) -> dict[str, str]:
+    """``Class.method`` tail -> gold name, only for tails one gold name owns.
+
+    A tail claimed by two gold names (same class and method in different
+    packages) is dropped rather than guessed at.
+    """
+    index: dict[str, list[str]] = {}
+    for name in gold_names:
+        tail = _dotted_tail(name)
+        if tail is not None:
+            index.setdefault(tail, []).append(name)
+    return {tail: names[0] for tail, names in index.items() if len(names) == 1}
+
+
+def _canonicalise(
+    names: set[str], alias: dict[str, str], gold_names: set[str]
+) -> set[str]:
+    """Rewrite flat Gradle display names onto their gold spelling.
+
+    A name that already matches gold, is not in Gradle display form, or resolves
+    to no unique gold name is returned untouched -- so corpora whose parser
+    already agrees with gold (Maven surefire, pytest, go test) are unaffected.
+    """
+    if not alias:
+        return names
+    out: set[str] = set()
+    for name in names:
+        if name in gold_names:
+            out.add(name)
+            continue
+        tail = _flat_gradle_tail(name)
+        out.add(alias.get(tail, name) if tail is not None else name)
+    return out
+
+
 def _is_finite_float(value: float) -> bool:
     return value == value and value not in (float("inf"), float("-inf"))
 
@@ -178,6 +244,27 @@ def compute_score_v2g(
 
     gold, lazy_recurated = _gold_with_lazy_recuration(dataset_record)
     diagnostics["lazy_recurated"] = lazy_recurated
+
+    # The Gradle log parser records a test as its console display string
+    # ("GcWatcherTest > shouldDisposeHookCorrectly()") while every curated bucket
+    # and every dataset-recorded result uses the fully-qualified dotted form
+    # ("run.halo.app.extension.gc.GcWatcherTest.shouldDisposeHookCorrectly()").
+    # Compared verbatim the two never intersect, so a Gradle run that hit all of
+    # its targets scored 0.0 instead of being refused -- a silent wrong answer
+    # rather than a visible one. Rewrite the run-side names onto their gold
+    # spelling before any set operation reads them.
+    gold_names = (
+        gold["f2p_tests"] | gold["s2p_tests"] | gold["n2p_tests"] | gold["p2p_tests"]
+    )
+    alias = _gradle_alias_map(gold_names)
+    if alias:
+        F_p = _canonicalise(F_p, alias, gold_names)
+        F_f = _canonicalise(F_f, alias, gold_names)
+        F_s = _canonicalise(F_s, alias, gold_names)
+        T_p_baseline = _canonicalise(T_p_baseline, alias, gold_names)
+        # Recomputed on canonical names: on Gradle corpora the raw-name drift is
+        # the spelling gap, not a real baseline disagreement.
+        baseline_drift = len(T_p_baseline ^ T_p_dataset)
 
     targets = gold["f2p_tests"] | gold["s2p_tests"] | gold["n2p_tests"]
 
