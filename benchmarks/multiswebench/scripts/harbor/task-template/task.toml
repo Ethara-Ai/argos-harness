@@ -36,3 +36,23 @@ cpus = {cpus}
 memory_mb = {memory_mb}
 storage_mb = {storage_mb}
 gpus = 0
+
+[upstream_provenance]
+# P-001: every task is a repackaged public pull request, so origin is "derived"
+# and provenance_date is the contamination reasoning boundary - the date the fix
+# became public. A model trained before it cannot have memorised the repair.
+origin = "derived"
+provenance_date = "{provenance_date}"
+source_kind = "public_repository"
+upstream_benchmark = "multi-swe-bench"
+upstream_toolchain = "{upstream_toolchain}"
+license = "{upstream_license}"
+modifications = ["harbor-repackage", "rubric-added", "instruction-rewritten"]
+
+[upstream_provenance.source]
+# canonical_repo is the host's current identity, which survives renames;
+# tests/config.json keeps the name as mined and can therefore go stale.
+canonical_repo = "{canonical_repo}"
+base_commit = "{base_commit}"
+pull_request = {pr_number}
+event_timestamp = "{event_timestamp}"

@@ -96,6 +96,13 @@ def _render_sample() -> dict[str, object]:
         cpus="8",
         memory_mb="12288",
         storage_mb="12288",
+        upstream_toolchain="github.com/Ethara-Ai/multi-swe-bench@deadbeef",
+        canonical_repo="conan-io/conan",
+        upstream_license="MIT",
+        provenance_date="2021-04-07",
+        event_timestamp="2021-03-30T09:14:02Z",
+        base_commit="0" * 40,
+        pr_number="8675",
     )
     return tomllib.loads(rendered)
 
@@ -147,3 +154,19 @@ def test_rendered_template_parses_with_expected_metadata() -> None:
     assert metadata["category"] == "bug_fixing"
     assert metadata["category"] in TASK_CATEGORIES
 
+
+def test_upstream_provenance_block_is_complete() -> None:
+    """FORGE 9a: a derived task declares where its bytes came from, under what
+    licence, and by which date -- the boundary contamination reasoning uses."""
+    prov = _render_sample()["upstream_provenance"]
+    assert isinstance(prov, dict)
+    assert prov["origin"] == "derived"
+    assert prov["source_kind"] == "public_repository"
+    assert prov["license"] == "MIT"
+    assert prov["provenance_date"] == "2021-04-07"
+    assert prov["modifications"]
+    source = prov["source"]
+    assert source["canonical_repo"] == "conan-io/conan"
+    assert source["pull_request"] == 8675
+    assert source["event_timestamp"] == "2021-03-30T09:14:02Z"
+    assert len(source["base_commit"]) == 40

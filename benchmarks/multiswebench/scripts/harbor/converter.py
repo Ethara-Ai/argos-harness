@@ -10,8 +10,10 @@ import shutil
 import string
 import sys
 import tomllib
+import urllib.request
 import uuid
 from datetime import datetime, timezone
+from importlib.metadata import distribution
 from pathlib import Path
 from typing import Any
 
@@ -637,6 +639,100 @@ def derive_cost_from_tokens(
 def random_trial_suffix(length: int = 7) -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(random.choice(alphabet) for _ in range(length))
+
+
+UPSTREAM_TOOLCHAIN_REPO = "github.com/Ethara-Ai/multi-swe-bench"
+
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
+
+
+def resolve_upstream_toolchain() -> str:
+    """``<repo>@<sha>`` for the multi-swe-bench build that actually ran.
+
+    The bundles are repackaged output of one exact toolchain revision, so the
+    manifest has to name it for the provenance record to be reconcilable. It is
+    resolved here rather than restated as a literal: a hand-copied SHA has to be
+    moved by hand on every repin, and the one time that was missed the manifest
+    kept naming a revision that was no longer installed -- a wrong provenance
+    reads as evidence, which is worse than a declared gap.
+
+    The installed distribution is the authority, because it records the commit
+    that uv actually resolved and ran. ``DEFAULT_MSB_REF`` is the fallback, but
+    only when the pin is a full SHA: that pin is allowed to be ``main``, which
+    names a moving target and cannot serve as a provenance record. Neither
+    available yields "unavailable", matching how licence and dates are handled
+    in ``fetch_upstream_provenance`` below.
+    """
+    commit: str | None = None
+    try:
+        raw = distribution("multi-swe-bench").read_text("direct_url.json")
+        commit = json.loads(raw or "{}").get("vcs_info", {}).get("commit_id")
+    except Exception:  # noqa: BLE001 - absent provenance is recorded, never guessed
+        commit = None
+    if not commit and _FULL_SHA.fullmatch(DEFAULT_MSB_REF):
+        commit = DEFAULT_MSB_REF
+    return f"{UPSTREAM_TOOLCHAIN_REPO}@{commit}" if commit else "unavailable"
+
+
+UPSTREAM_TOOLCHAIN = resolve_upstream_toolchain()
+
+
+def _github_json(path: str) -> dict[str, Any] | None:
+    """One GitHub REST read, or None. Follows the 301 a renamed repo returns."""
+    req = urllib.request.Request(
+        f"https://api.github.com/{path}",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "argos-harbor"},
+    )
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:  # nosec B310 - fixed api.github.com host
+            return json.loads(r.read())
+    except Exception:  # noqa: BLE001 - absent provenance is recorded, never guessed
+        return None
+
+
+def fetch_upstream_provenance(
+    org: str, repo_name: str, pr_number: int
+) -> dict[str, str]:
+    """The upstream facts the manifest must carry, read from the source of record.
+
+    The mined dataset record carries neither the licence nor any date, so these
+    come from the API. `provenance_date` is the merge date -- the moment the fix
+    entered the public corpus, which is the boundary contamination reasoning
+    needs; `event_timestamp` is when the PR opened, per FORGE 9a's requirement
+    that it be the task-generating event and not the commit time.
+
+    Anything unreachable is recorded as "unavailable" rather than guessed: a
+    wrong provenance date reads as evidence and is worse than a declared gap.
+    """
+    repo_doc = _github_json(f"repos/{org}/{repo_name}")
+    if repo_doc is None:
+        # The miner sometimes records an org-prefixed repo name that the host
+        # never used (Grainlify/Grainlify-Stellar-Contracts for Stellar-Contracts).
+        alt = re.sub(rf"^{re.escape(org)}-", "", repo_name, flags=re.I)
+        if alt != repo_name:
+            repo_doc = _github_json(f"repos/{org}/{alt}")
+    if repo_doc is None:
+        return {
+            "canonical_repo": f"{org}/{repo_name}",
+            "license": "unavailable",
+            "provenance_date": "unavailable",
+            "event_timestamp": "unavailable",
+        }
+    licence = repo_doc.get("license")
+    canonical = repo_doc.get("full_name") or f"{org}/{repo_name}"
+    pull = _github_json(f"repos/{canonical}/pulls/{pr_number}") or {}
+    merged = pull.get("merged_at") or ""
+    return {
+        "canonical_repo": canonical,
+        # SPDX distinguishes the two: NONE is no licence at all, NOASSERTION is
+        # a licence file the host could not identify. Neither is a failure.
+        "license": "NONE" if not licence else (licence.get("spdx_id") or "NOASSERTION"),
+        "provenance_date": merged[:10] or "unavailable",
+        "event_timestamp": pull.get("created_at") or "unavailable",
+    }
 
 
 def sha256_of_dir(root: Path) -> str:
@@ -1424,6 +1520,7 @@ def build_task(
             "fix_patch": fix_patch_text,
         }
     )
+    provenance = fetch_upstream_provenance(org, repo_name, pr_number)
     task_toml_text = render_literal(
         read_text(TEMPLATE_DIR / "task.toml"),
         task_uuid=task_uuid,
@@ -1437,6 +1534,13 @@ def build_task(
         cpus=str(resources["cpus"]),
         memory_mb=str(resources["memory_mb"]),
         storage_mb=str(resources["storage_mb"]),
+        upstream_toolchain=UPSTREAM_TOOLCHAIN,
+        canonical_repo=provenance["canonical_repo"],
+        upstream_license=provenance["license"],
+        provenance_date=provenance["provenance_date"],
+        event_timestamp=provenance["event_timestamp"],
+        base_commit=base_commit,
+        pr_number=str(pr_number),
     )
     (task_dir / "task.toml").write_text(task_toml_text, encoding="utf-8")
 
