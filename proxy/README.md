@@ -68,6 +68,7 @@ proxy/
 │   ├── {bridge,credentials,errors,shaping,sse}.py + __main__.py
 │   └── probe.py                   #   Phase-0 backend probe (diagnostic, safe to delete)
 ├── codex_bridge.sh                # same start|stop|status|check|monitor, port 8766
+│   └── {bridge,credentials,errors}.py + __main__.py
 ├── .gitignore                     # ignores runtime artifacts (*.pid, logs/)
 └── README.md                      # this file
 ```
@@ -91,6 +92,54 @@ account on the same machine as the `codex` CLI does not need it); it forces
 first user message, and aggregates the upstream SSE back to JSON for
 non-streaming callers. Only `gpt-5.6-sol` is accepted by the ChatGPT-account
 backend. Errors use the same `aurora_bridge` envelope as the Claude bridge.
+
+### The zbridge GLM proxy (port 8768)
+
+`zbridge/` is a **second, independent** route to GLM-5.3 and the one currently
+endpoint, zbridge **translates**: it serves Anthropic `/v1/messages` and
+converts requests, responses and SSE frames to and from z.ai's *OpenAI-compat*
+Coding Plan endpoint `https://api.z.ai/api/coding/paas/v4/chat/completions`.
+It adds buffered streaming with mid-stream retry, thinking-block signatures, and
+tool-call translation. Source of truth is the standalone `zbridge` project; the
+package here is a vendored copy.
+
+Three defaults from that project are **overridden** by `zbridge.sh`, and all
+three are required rather than cosmetic:
+
+| zbridge default | used here | why |
+| --------------- | --------- | --- |
+| bind `127.0.0.1` | `0.0.0.0` | containers cannot reach loopback on the host |
+| port `8766` | `8768` | 8766 is already `codex_bridge` |
+| key from process env | `~/.config/zbridge/env` | keeps secrets out of the repo |
+
+Unlike the other bridges, **`api_key` in the LLM config is not a stub**. zbridge
+authenticates callers against `ZB_BRIDGE_SECRET` and accepts it via `x-api-key`
+— exactly the header litellm's `anthropic/` provider sends — so the config value
+must equal that secret. `.llm_config/*` is gitignored, so it stays out of git.
+
+```bash
+# ~/.config/zbridge/env  (chmod 600)
+#   ZB_ZAI_API_KEY=<z.ai coding plan key>
+#   ZB_BRIDGE_SECRET=<local shared secret>
+#   ZB_THINKING_SIG_KEY=<hmac key for thinking signatures>
+
+proxy/zbridge.sh start
+proxy/zbridge.sh status     # {"ok":true,"upstream":"...","model_default":"glm-5.3"}
+
+./run_eval.sh --llm-config .llm_config/glm-zbridge.json --dataset <bundle>.jsonl ...
+```
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `ZB_ENV_FILE` | `~/.config/zbridge/env` | Credential file sourced at start. |
+| `ZB_BRIDGE_HOST` / `ZB_BRIDGE_PORT` | `0.0.0.0` / `8768` | Bind address. |
+| `ZB_DEFAULT_MODEL` | `glm-5.3` | Model sent upstream. |
+| `ZB_MODEL_ALIAS_JSON` | _(unset)_ | JSON map remapping inbound model names. |
+| `ZB_UPSTREAM_URL` | z.ai coding endpoint | Upstream override. |
+| `ZB_PYTHON` | `<harness>/.venv/bin/python` | Interpreter (harness venv has all deps). |
+
+> **Data residency:** zbridge sends traffic to z.ai (Chinese infrastructure).
+> Do not point trajectories containing confidential or regulated data at it.
 
 ---
 
@@ -267,10 +316,15 @@ journalctl -u claude-code-bridge -f              # logs
 
 ### 7. Confirm the container can reach the proxy
 
-The harness's in-container **egress filter is a denylist** (it only 403s the
-task's own repo/package to prevent cheating) — it does **not** block the LLM
-endpoint. If a run still can't reach the proxy, test host reachability from a
-throwaway container on the same bridge network:
+The harness's in-container **egress filter is a full default-deny** (`decide()`
+in `egress-filter.py` denies *every* host). Two things get through: the
+`--ignore-hosts` SaaS regex (`openai.com`, `google*.com`), and the
+`LLM_DIRECT_HOST` carve-out — an iptables ACCEPT + `NO_PROXY` entry that
+`run_infer.py` adds **only when the LLM `base_url` is plain `http://`**. That is
+why every bridge here is addressed over plain HTTP on the docker gateway: an
+`https://` LLM base_url would be 403'd inside the container. If a run still
+can't reach the proxy, test host reachability from a throwaway container on the
+same bridge network:
 
 ```bash
 docker run --rm curlimages/curl -sS http://172.17.0.1:8765/healthz
