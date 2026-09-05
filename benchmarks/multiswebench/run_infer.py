@@ -29,6 +29,7 @@ from benchmarks.utils.evaluation_utils import (
 )
 from benchmarks.utils.fake_user_response import run_conversation_with_fake_user_response
 from benchmarks.utils.image_utils import image_exists
+from benchmarks.utils.model_registry import register_custom_models
 from benchmarks.utils.models import (
     EvalInstance,
     EvalMetadata,
@@ -571,6 +572,7 @@ class MultiSWEBenchEvaluation(Evaluation):
 
 
 def main() -> None:
+    register_custom_models()
     prompt_dir = (Path(__file__).parent / "prompts").resolve()
     choices = [str(p.relative_to(Path.cwd())) for p in prompt_dir.glob("*.j2")]
     default_prompt_path = prompt_dir / "default.j2"
