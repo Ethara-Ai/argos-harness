@@ -81,7 +81,13 @@ _FIX_RUN_REWRITER = r"""#!/bin/bash
 set -e
 f=/home/fix-run.sh
 sed -i ':a;N;$!ba; s@\\\n[[:blank:]]*@ @g' "$f"
-sed -i 's@^git apply.*@bash /home/apply_patch.sh /home/test.patch ; bash /home/apply_patch.sh /home/fix.patch@g' "$f"
+repl='bash /home/apply_patch.sh /home/test.patch ; bash /home/apply_patch.sh /home/fix.patch'
+awk -v repl="$repl" '
+BEGIN { depth = 0 }
+depth > 0 { o = gsub(/\{/, "{"); c = gsub(/\}/, "}"); depth += o - c; next }
+/^git apply/ { print repl; if ($0 ~ /\|\|[[:space:]]*\{[[:space:]]*$/) depth = 1; next }
+{ print }
+' "$f" > "$f.rewritten" && mv "$f.rewritten" "$f"
 bash -n "$f"
 """
 
