@@ -941,10 +941,10 @@ print(d.get('org',''), d.get('repo',''), d.get('number',''), d['uuid'])
 
     if [[ "$NEED_WORK" == true ]]; then
     # ── Phase 0: build / tag base image ──────────────────────────────────────
-    # Harness expects: mswebench/{org}_m_{repo}:{tag}  (lowercased to match code)
+    # Harness expects: mswebench/{org}__{repo}:{tag}  (lowercased to match code)
     PH_ENV_START="$(iso_now_microseconds)"
     local HARNESS_IMAGE_NAME
-    HARNESS_IMAGE_NAME="$(echo "mswebench/${DS_ORG}_m_${DS_REPO}:${EXPECTED_IMAGE_TAG}" | tr '[:upper:]' '[:lower:]')"
+    HARNESS_IMAGE_NAME="$(echo "mswebench/${DS_ORG}__${DS_REPO}:${EXPECTED_IMAGE_TAG}" | tr '[:upper:]' '[:lower:]')"
     export EVAL_DOCKER_IMAGE_PREFIX="mswebench"
 
     if docker image inspect "$HARNESS_IMAGE_NAME" >/dev/null 2>&1; then
@@ -982,7 +982,7 @@ print(d.get('org',''), d.get('repo',''), d.get('number',''), d['uuid'])
     PH_AGENT_START="$(iso_now_microseconds)"
 
     # ── Pre-build agent-server image (so harness can SKIP_BUILD) ──────────────
-    local CUSTOM_TAG="${DS_ORG}_m_${DS_REPO}-${EXPECTED_IMAGE_TAG}"
+    local CUSTOM_TAG="${DS_ORG}__${DS_REPO}-${EXPECTED_IMAGE_TAG}"
     CUSTOM_TAG="$(echo "$CUSTOM_TAG" | tr '[:upper:]' '[:lower:]')"
     local AGENT_SERVER_IMAGE="ghcr.io/openhands/eval-agent-server:${SDK_SHORT_SHA}-${CUSTOM_TAG}-source-minimal"
 
