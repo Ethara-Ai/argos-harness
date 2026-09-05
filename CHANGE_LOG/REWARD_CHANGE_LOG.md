@@ -1,3 +1,157 @@
+# Reward Change Log — quality channel: `score_quality` published beside the reward, reward unchanged (2026-09-03)
+
+**Date:** 2026-09-03 · **Directive:** TL's Aug-28 revision, ask 2 ("code quality / tastefulness
+grading": seven named dimensions, a quality-only signal decoupled from outcome, a pinned and
+calibrated judge). Anzar chose Yes/No verdicts on the existing ladder and the same `judge_model`
+as the correctness judge; the council implementation stays shelved in `stash@{0}`.
+
+**The formula did not change.** `process = (det + rubric) / 2`, `score_eval`, `score_rl`, the
+hard gate and `alpha` are byte-identical in `assay/compose.py`; the scorer stamp stays
+`54541243524e08fb` and both pilot fixtures re-score byte-for-byte. What was added is a
+**separate, publish-only channel** that a consumer can read next to the reward and that
+nothing multiplies into it.
+
+**What was made:**
+
+| Where | Before | Now |
+|---|---|---|
+| `trajectories/<alias>/run_N/artifacts/` | empty; the agent's diff was never shipped (assay reconstructed a lower bound from editor calls) | `agent.patch` = the exact `git diff <base> HEAD` from the inference record; manifest says `present` + `files` (`converter.py::write_agent_patch`); `multiswebench-rubric attach-patch` backfills from `run_N/output.jsonl` without re-running the converter |
+| `tests/quality.json` | absent | the fixed seven-item block (`assay/quality.json`, `quality-v1`), one positive Yes/No item per dimension: conventions, minimal_diff, abstraction, readability, naming, idiomaticity, dead_code; equal weight 3; materialized by `assay author` and `assay quality-init`, and the **only** manifest judging/scoring/calibration read (they refuse without it). `pyproject.toml` now ships `assay/*.json` as package data; built wheels previously omitted `preamble.json` too |
+| judge | one system prompt, roster from `ASSAY_COUNCIL` / corpus defaults | `assay quality-judge --judge-config` takes the seat explicitly from `judge_model` (never `ALL_SEATS`, never `scoring_members`); its own `QUALITY_SYSTEM` prompt; evidence = instruction + the diff, **no TRUTH** (blind to the reference) |
+| verdict store | `<store>/<uuid>/<model>__<run>.jsonl` | quality verdicts in a sibling `<store>/quality/<uuid>/<model>__<run>__quality.jsonl` (`gold__quality.jsonl` for the reference patch); the rubric scorer's per-task fingerprint scan is untouched |
+| `verifier/quality.json`, `verifier/quality_verdicts.jsonl` | absent | per run: status, judge, patch digest, evidence digest, per-dimension verdicts, `score`, `quality_fingerprint` = sha256(quality_version ∥ prompt_digest ∥ judge model ∥ evidence_digest)[:16], where the evidence digest covers the exact clipped instruction + patch text the judge saw |
+| `final_score.md` | two tables | plus a delimited `<!-- quality -->` block; `score --write` regenerates it from `verifier/quality.json` so the two passes run in either order |
+| `result.json → verifier_result` | `scores.*`, `assay{}` | plus `quality{quality_version, prompt_digest, judge, status, calibrated, quality_fingerprint}` always, and `scores.score_quality` **only when** `tests/judge_calibration.json` records `passed: true` for this judge model + prompt digest |
+| calibration | none | `assay quality-calibrate`: labels CSV (`task_uuid,subject,dimension,rating,rater[,split]`, integer 1–5 validated), per-subject hash split (0.6 holdout) with optional override, ≥ 50 subjects / ≥ 2 raters per cell / ≥ 20 dev / ≥ 30 holdout, inter-rater weighted κ ≥ 0.60, holdout Spearman ≥ 0.60 and Pearson ≥ 0.60, per-dimension balanced accuracy ≥ 0.65 (human ≥ 4 ⇒ pass), every subject's verdicts fingerprint-checked; `calibration_check` re-derives pass/fail from the recorded metrics against `DEFAULT_GATES` and the bundle's manifest digest, so a hand-written file cannot license publication. Floors pending TL confirmation |
+| `run_eval.sh` | rubric tail ends at `score --write` and logs `rubric: ok` | logs `rubric: reward ok`, then `quality-init` + `quality-judge` + `quality-score --shadow` (`RUBRIC_QUALITY_ENABLE=1`, `RUBRIC_QUALITY_SHADOW=1` by default); a quality failure logs a WARN and never changes `rrc` |
+
+**Fail-closed rules:** no `agent.patch` ⇒ `evidence_missing` (no fallback to the reconstructed
+edit set); empty patch ⇒ `empty_patch`; any of the seven verdicts missing, uncited, truncated
+or split ⇒ `unjudged`, `score: null`, never renormalised over fewer items; verdicts from a
+member other than the configured judge, or carrying another fingerprint, are refused. Resume
+(`quality-judge` re-run) re-asks every item whose stored answer cannot decide it: unparseable,
+uncited, or truncation-affected (live: Sonnet cut an `[[EVIDENCE:` tag at max_tokens), unlike the
+rubric channel, which keys resume on parseability alone because an abstention there only
+leaves the denominator.
+
+**What did NOT change:** `score_v2g`; all 28 deterministic checks and the {1,3,5} ladder; hard
+gates; the rubric tally (six dimension budgets, `FLOOR_BAND`, abstention ladder); `alpha`;
+stratified `score_rl`; judge blindness of the rubric channel; `bundle_fingerprint` and every
+stored correctness verdict; harness-owned `score`/`score_binary`/`score_continuous_v2`; the
+5-key `assay` block; `ASSAY_SCORE_FIELDS` and `strip_assay_scores`.
+
+**Tests:** `tests/test_quality_manifest.py`, `test_quality_scoring.py`, `test_quality_cli.py`
+(offline judge loop with a fake bridge, shadow vs calibrated writes, `score --write`
+re-append), `test_quality_calibration.py`, `test_attach_patch.py`,
+`benchmarks/multiswebench/tests/test_converter_agent_patch.py`, `TestQualityWiring` in
+`test_rubric_wiring.py`, `TestAgentPatchReader` in `test_assay_vendor_patches.py`; corpus
+comparison tests gained an `OURS_ONLY` allowance. No test makes a network call.
+
+**Numeric effect:** none on any existing field. `score_quality` appears nowhere until a
+calibration file passes.
+
+## How to revert
+
+One commit. `git log --oneline --grep="quality channel"`, then `git revert <sha>` — restores
+converter, assay, run_eval.sh, tests and docs together. Bundles already carrying
+`artifacts/agent.patch`, `tests/quality.json` or `verifier/quality.*` keep them; nothing in the
+reward path reads those files, so no re-score is needed.
+
+---
+
+# [NOT MERGED — implementation lives only in git `stash@{0}`] Reward Change Log — three-seat judge council: roster-threshold majority, κ as diagnostics (2026-08-20)
+
+> Status 2026-09-03: this chapter records design work that was stashed before `main` moved to the
+> single-judge batch (`921e3f9`). Nothing below is in HEAD. Kept for the record; see the quality
+> channel chapter above for the current reward statement.
+
+**Date:** 2026-08-20 · **Directive:** Anzar — genuine three-judge council (Opus + GPT-5.6-sol
++ Sonnet through the OAuth bridges; Kimi K3 as designated future roster), per the approved
+plan (decision log in `COUNCIL_REVERT_PLAN_claude.md` §5, normative base
+`LLM_COUNCIL_REDESIGN_codex.md`, both superseded by the merged final plan). **The reward
+formula did not change**: `process = (det + rubric) / 2` stays byte-identical in
+`assay/compose.py`. What changed is *what feeds `rubric`* — one judge's verdicts became the
+majority of three — and κ returned **as diagnostics that structurally cannot touch reward**.
+
+**The council contract:**
+
+- **Profile** (`.llm_config/rubric-judge.json` → `council`, loaded/validated by
+  `assay/council.py`): `production-council-v1` = opus (`anthropic/claude-opus-5`, :8765
+  messages), gpt (`openai/gpt-5.6-sol`, :8766 responses), sonnet
+  (`anthropic/claude-sonnet-5`, :8765 messages). Fail-fast validation before any network
+  call; a canonical 16-hex **profile fingerprint** binds every verdict — a changed roster,
+  model, endpoint, aggregation, or protocol version is a new identity and old verdicts never
+  silently satisfy it. `.env` is loaded here (python-dotenv); a member's missing `key_env`
+  variable fails validation naming the exact variable (the inert
+  `production-council-v2-kimi` profile activates by setting `OPENROUTER_API_KEY`).
+- **Aggregation** (`assay/rubric.py::aggregate_council` over
+  `assay/council.py::resolve_votes`): per-item majority with threshold
+  `floor(roster/2)+1` **of the configured roster, never of usable ballots** (the legacy
+  `aggregate()` resolved one usable ballot as "unanimous"). 3–0 `unanimous`; 2–1 `majority`
+  (Opus can be outvoted, both directions pinned by tests); vote+vote+abstain `majority`;
+  Yes/No/abstain `abstain_disagreement`; one vote `abstain_no_quorum`. The Opus `tie_break`
+  exists only in the explicit two-seat `degraded-opus-gpt-v1` profile (operator-selected, a
+  separate score era; single-family pairs carry a recorded warning).
+- **Fail-closed completeness:** a missing member×item cell (transport failure, unparseable
+  or empty response, wrong fingerprint) is **missing judgment** — never a No-vote, never an
+  abstention. Any missing cell ⇒ the whole run `unjudged`, symmetrically for every seat;
+  two agreeing seats never publish while the third is absent. Verdict cells are resumable:
+  re-running `assay judge` fetches only the missing cells of the current
+  bundle+profile era. An unjudged (re)score **quarantines** stale assay-owned scores in
+  `result.json` (`strip_assay_scores`; harness-owned `score`/`score_binary`/
+  `score_continuous_v2` untouched, writes atomic).
+- **κ diagnostics** (`assay/agreement.py`, ported from the pre-single-judge scorer):
+  pairwise/council/pooled Cohen's κ + raw agreement in the new authoritative `council`
+  block of `process.json`, with per-item ballots, resolution counts, and
+  `agreement_affects_reward: false`. κ is `null` when degenerate (e.g. a fully unanimous
+  council) — under the old `channel_weight(κ)` composition that `null` silently **zeroed
+  the rubric channel** (the 2026-08-11 bug); now it zeroes nothing, pinned by metamorphic
+  tests and a compose-imports-no-agreement dependency test.
+- **Transport/routing:** per-member endpoints from the profile (the single
+  `ASSAY_PROXY`/`ASSAY_CODEX_PROXY` split is gone); per-bridge-host pacing lanes (Opus and
+  Sonnet share the :8765 lane, GPT's :8766 lane runs parallel); a dead endpoint fails all
+  its seats in seconds (`BridgeUnreachable` short-circuit) without touching other seats'
+  work. New `python -m assay preflight` (the council twin of
+  `scripts/check_thinking_capture.py`, which is unchanged) probes every seat with one
+  synthetic prompt; `run_eval.sh`'s rubric chain runs it before judging and skips the chain
+  on a dead seat. `run_eval.sh` no longer derives `ASSAY_COUNCIL`/`ASSAY_PROXY` from
+  `judge_model`; profile selection is `RUBRIC_COUNCIL_PROFILE` (a complete named profile,
+  never an ad-hoc roster).
+- **Scorer identity:** `_SCORER_SOURCES` gains `assay/rubric.py` + `assay/council.py`
+  (aggregation is score-affecting); stamp moved `54541243524e08fb` → `7ff8244493527001`,
+  pilot fixtures regenerated (verified stamp-only byte diff). The anchor gate remains
+  single-transport for now (councilized anchoring is the staged follow-up) and records its
+  judge model as `anchor_judge` in `.anchoring/<bundle>.json`.
+- **Era compatibility:** verdict files without a `council_profile` field replay under the
+  original single-judge semantics, byte-identical (pilot regression green). Council scores
+  are not numerically comparable to single-judge-era scores; interim-council (Sonnet seat)
+  scores are not comparable to the future Kimi roster (new profile fingerprint forces
+  re-judging).
+
+**What did NOT change:** `score_v2g`, all 28 deterministic checks + {1,3,5} ladder, hard
+gates, rubric tally (dimension budgets, floor band), alpha, stratified `score_rl`,
+judge blindness, harness-owned fields, `scripts/check_thinking_capture.py`.
+
+**Tests:** ~120 new/updated across `tests/test_council_policy.py` (decision tables,
+κ-inertness, quarantine), `test_council_profile.py` (validation + fingerprint identity),
+`test_council_transport.py` (three API shapes against local synthetic servers — including
+the never-live-fired :8766 Responses judge shape — resume era-mixing, preflight e2e),
+`test_council_agreement.py` (κ math + council block), `test_council_scoring_e2e.py`
+(pilot-943 bundle scored from synthetic council verdicts; missing any seat ⇒ unjudged).
+No test makes a network call. **Live rollout is staged and pending:** bridge health →
+per-seat preflight → synthetic full-council smoke → authorized shadow re-judge of the
+pilots → enable authoritative writeback.
+
+## How to revert
+
+`git revert` the council commit(s). The legacy replay path is intact (profile-less verdict
+files score exactly as before), so reverting restores single-judge behavior without touching
+stored verdicts. Do **not** revert by unsetting profile config while keeping the code: the
+judge CLI hard-errors without a profile by design. Fixture `process.json` stamps must be
+regenerated after any revert (stamp-only diff, `tests/test_milo_pilot_regression.py`).
+
+---
+
 # Reward Change Log — plain-average process score: kappa AND weight constant removed (2026-08-13)
 
 **Date:** 2026-08-13 (evening) · **Directive:** Anzar, aligned with TL's expected artifact

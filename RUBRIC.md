@@ -24,17 +24,20 @@ The rubric layer adds the **process channel**, in the exact delivery format of t
 │   ├── config.json · test.patch · test.sh · run_tests.py
 │   ├── rubrics.json             # R-items (task-specific, judged, weights 1/3/5)
 │   │                            #  + G1–G7 shared guardrails + 28 check descriptors
+│   ├── quality.json             # fixed 7-item code-quality block (publish-only channel)
+│   ├── judge_calibration.json   # once human calibration passes; gates score_quality
 │   └── test_output.py           # emitted pytest: re-runs the deterministic
 │                                #  channel against the bundle, standalone
 └── trajectories/<model>/run_N/
-    ├── config.json · result.json (scores + assay block written back)
+    ├── config.json · result.json (scores + assay block + quality block written back)
     ├── agent/{trajectory.json (ATIF-v1.7), recording.cast, *.pane}
-    ├── artifacts/manifest.json
+    ├── artifacts/{manifest.json, agent.patch}   # the agent's exact git diff
     └── verifier/{score.md, test-stdout.md, verdicts.jsonl,
-                  process.json, final_score.md}
+                  process.json, final_score.md,
+                  quality.json, quality_verdicts.jsonl}
 ```
 
-Structural equality with the reference corpus is enforced by `tests/test_bundle_structure.py`: identical file set, identical JSON key sets/order (process.json, result.json writeback), identical enums, verdict-line key order, `final_score.md` template, `score.md` format. Exception: `rubrics.json` is the headerless 3-key form (`items`, `checks`, `sites` — the corpus's five header keys removed per delivery spec); its item/checks/sites internals stay corpus-identical.
+Structural equality with the reference corpus is enforced by `tests/test_bundle_structure.py`: identical file set, identical JSON key sets/order (process.json, result.json writeback), identical enums, verdict-line key order, `final_score.md` template, `score.md` format. Exception: `rubrics.json` is the headerless 3-key form (`items`, `checks`, `sites` — the corpus's five header keys removed per delivery spec); its item/checks/sites internals stay corpus-identical. Second exception (2026-09-03): the quality channel's files — `tests/quality.json`, `tests/judge_calibration.json`, `artifacts/agent.patch`, `verifier/quality.json`, `verifier/quality_verdicts.jsonl` — plus `verifier_result.quality{}` and `scores.score_quality` in `result.json`, which the corpus predates (`OURS_ONLY` in the structure test).
 
 ## 3. The pipeline (all automatic, wired into `run_eval.sh`)
 
@@ -49,7 +52,8 @@ With `RUBRIC_ENABLE=1`, after harbor conversion each task flows through:
    - `assay certify` (verifies gold from recorded test results) → `assay emit-tests` → `assay validate`.
 3. **`assay judge`** — per-item judge calls (cached evidence packet) through the bridge; verdicts land in a per-task store and in each run's `verifier/verdicts.jsonl`.
 4. **`assay score --write`** — deterministic channel + composition; writes `process.json` / `final_score.md` and merges `score_outcome…score_rl` + the `assay{}` block into `result.json`.
-5. **staging** — the finished bundle is copied FLAT into the publish clone as `<data-dir>/<uuid>/` (argos-samples format; the sibling `verdicts/` judge store is never staged). Git commit/push automation is disabled by design — publish manually from the clone.
+5. **`assay quality-init` + `assay quality-judge` + `assay quality-score --shadow --write`** *(`RUBRIC_QUALITY_ENABLE=1`, default)* — the publish-only code-quality channel: `quality-init` materializes `tests/quality.json` (idempotent; judging refuses without it), then the same `judge_model`, passed explicitly via `--judge-config`, grades that file's seven items on the run's `artifacts/agent.patch` (instruction + diff, no TRUTH). Writes `verifier/quality.json` and a block in `final_score.md`; `scores.score_quality` is published only once `tests/judge_calibration.json` passes (`RUBRIC_QUALITY_SHADOW=0` to require it). A failure here logs a WARN and never affects the reward chain. See `SCORE_MATH.md` §3b.
+6. **staging** — the finished bundle is copied FLAT into the publish clone as `<data-dir>/<uuid>/` (argos-samples format; the sibling `verdicts/` judge store, including `verdicts/quality/`, is never staged). Git commit/push automation is disabled by design — publish manually from the clone.
 
 Model config (`.llm_config/rubric-judge.json`): `author_model` — full litellm id that writes the TRUTH.md narration + R-items (current batch `anthropic/claude-opus-5`; falls back to `claude-sonnet-5` if absent); `judge_model` — litellm id used for the anchoring gate and the judge council (current batch `openai/responses/gpt-5.6-sol`, which also moves `base_url` to `:8766`; legacy key `model` still honored). The council name and the `ASSAY_PROXY` are both derived from `judge_model` once per task and shared by judge and score, so the two can never disagree.
 
@@ -83,6 +87,7 @@ Both bundles ran the full live chain: export → automatic authoring (538: 8 dra
 
 | Decision | Rationale |
 |---|---|
+| Quality is a separate, publish-only channel judged by the same seat | The TL's ask 2 requires quality decoupled from outcome, a pinned judge and calibration evidence. Folding seven style items into `rubrics.json` would have moved the correctness fingerprint (re-judging every bundle) and been zero-weighted by the dimension budget; so they ship as `tests/quality.json`, are graded on the real diff (never the reconstructed edit set, never with TRUTH in view), carry their own `quality_version`/prompt digest/fingerprint, and `score_quality` is withheld until `tests/judge_calibration.json` passes. `process = (det + rubric) / 2` is unchanged. |
 | Single judge seat `gpt-5.6-sol` (vs corpus's gpt-5.5/opus-4.8 seats) | User decision; recorded truthfully in the `judge` block and verdict fields. 180 of 270 corpus runs also used a single judge. Authoring uses a separate model from a different family (`author_model`, current batch opus-5), so author≠judge holds structurally, while the anchoring gate deliberately mirrors the real judge. The composition averages this judge's channel equally with the deterministic checks (§4a) — never weighted by kappa, which a single judge cannot have. |
 | Fully automatic authoring, no human sign-off | The anchoring gate is the quality bar: items that can't distinguish the gold solution from a stub are redrafted or pruned. |
 | `version.scorer` differs from the corpus constant | Different scorer bytes by definition; mechanism identical (proven by replay). |
@@ -92,4 +97,4 @@ Both bundles ran the full live chain: export → automatic authoring (538: 8 dra
 
 ## 7. Cost
 
-Authoring ≈ 6–10 bridge calls per task (narration retries + drafting + anchoring); judging ≈ 1 call per rubric item per run with prompt-cached evidence (pilot: 11–13 calls/run). Via the subscription bridge this is ≈ $1–2 per authored task + ≈ $0.5–0.8 per judged run at API list prices — effectively covered by the subscription.
+Authoring ≈ 6–10 bridge calls per task (narration retries + drafting + anchoring); judging ≈ 1 call per rubric item per run with prompt-cached evidence (pilot: 11–13 calls/run), plus 7 quality calls per run when the channel is enabled. Via the subscription bridge this is ≈ $1–2 per authored task + ≈ $0.5–0.8 per judged run at API list prices — effectively covered by the subscription.

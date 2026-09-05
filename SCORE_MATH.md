@@ -16,6 +16,8 @@ Nothing here is paraphrased from docs.
 | 1. Outcome score | `benchmarks/multiswebench/scripts/harbor/converter.py:1309` calls `compute_score_v2g()` (`scripts/eval/score_v2g.py:90`) | `result.json → verifier_result.{scores, status, diagnostics}` — the initial file |
 | 2. Judging | `python -m assay … judge` — one LLM call per rubric item per run | `argos_bundles/verdicts/<uuid>/<model>__run_N.jsonl` (raw verdict text) |
 | 3. Scoring | `python -m assay … score --write` (`assay/cli.py:586` `cmd_score`) | `verifier/process.json`, `verifier/final_score.md`, `verifier/verdicts.jsonl` (copy), and **merges** extra `score_*` fields + an `assay{}` block back into `result.json` (`assay/cli.py:855`) |
+| 4. Quality judging (publish-only) | `python -m assay … quality-judge --judge-config …` — one LLM call per quality item per run, on `artifacts/agent.patch` | `argos_bundles/verdicts/quality/<uuid>/<model>__run_N__quality.jsonl` |
+| 5. Quality scoring (publish-only) | `python -m assay … quality-score --judge-config … --write [--shadow]` (`assay/quality_cli.py`) | `verifier/quality.json`, `verifier/quality_verdicts.jsonl`, a delimited block in `final_score.md`, `verifier_result.quality{}` in `result.json`, and `scores.score_quality` **only when** `tests/judge_calibration.json` passes |
 
 Five numbers are computed, then combined by one formula applied twice:
 
@@ -227,6 +229,75 @@ nothing.
 
 ---
 
+## 3b. The quality channel (`score_quality`, publish-only, 2026-09-03)
+
+**Files:** `assay/quality.json` (the block), `assay/quality.py` (scoring), `assay/quality_cli.py`
+(commands), `assay/writeback.py::merge_quality`.
+
+Not a reward input. `score_quality` is computed beside the reward and never enters `process`,
+`score_eval` or `score_rl`; `assay/compose.py` does not import it and the scorer stamp does not
+cover it. It has its own version and fingerprints.
+
+Items: exactly seven, one per dimension — `conventions`, `minimal_diff`, `abstraction`,
+`readability`, `naming`, `idiomaticity`, `dead_code` — all positive, weight 3 each, judged
+Yes/No with the same `[[RATIONALE / SATISFIED / TRUNCATION_AFFECTED / EVIDENCE]]` tags and the
+same `parse_verdict` / `aggregate` as the rubric. They are NOT in `rubrics.json` (that file's
+digest is the correctness fingerprint) and NOT budgeted by `DIMENSION_BUDGET` (which would
+give them zero weight); they ship as `tests/quality.json`, byte-identical to the manifest.
+
+Evidence: the task instruction (clipped to 4000 chars) plus the agent's shipped
+`artifacts/agent.patch` (cap 1.5 MB of UTF-8 bytes, cut without splitting a code point; the
+anchoring gate's budget). The reference TRUTH is withheld so the judge grades craft, not
+resemblance. No patch ⇒ `evidence_missing`; empty patch ⇒ `empty_patch`; neither is scored and
+neither falls back to the reconstructed edit set.
+
+Authority: every command reads the bundle's own `tests/quality.json` (materialized by
+`assay author` / `assay quality-init`) and refuses when it is absent. The package manifest is
+only the source that `quality-init` copies from, so a bundle cannot claim one block while being
+graded with another.
+
+Judge: the configured `judge_model` (`--judge-config`), derived to `(alias, bare model,
+endpoint)` exactly as `run_eval.sh` derives the rubric roster; `ASSAY_COUNCIL` and the corpus
+roster in `assay/judge.py` are never consulted. Verdicts from another member are refused.
+
+```
+score_quality = Σ w_i · [Q_i satisfied] / Σ w_i        over all seven, 4 dp
+              = passed / 7 at equal weights
+              = null   if ANY item is missing, uncited, truncated or split
+                       (status "unjudged"; never renormalised over fewer items)
+evidence_digest     = sha256(exact packet text: clipped instruction + patch as shown)[:16]
+prompt_digest       = sha256(QUALITY_SYSTEM ∥ canonical items of tests/quality.json)[:16]
+quality_fingerprint = sha256(quality_version ∥ prompt_digest ∥ judge_model ∥ evidence_digest)[:16]
+```
+
+Every verdict record carries `quality_fingerprint`; a changed prompt, judge, manifest,
+instruction, patch or clipping makes the run re-judge (stale records are dropped on the next
+`quality-judge`).
+
+Publication is gated by calibration: `scores.score_quality` is written only when the bundle's
+`tests/judge_calibration.json` licenses it. The document is not trusted on its word:
+`calibration_check` requires the full record (`CALIBRATION_REQUIRED`), the same
+`quality_version`, judge model, prompt digest **and manifest digest** as the bundle, recorded
+gates no looser than `DEFAULT_GATES`, and recomputes pass/fail from the recorded metrics.
+Otherwise `quality-score --shadow` writes `verifier/quality.json` (with the number, marked
+`calibrated: false`) and the `verifier_result.quality{}` status block, and withholds the score.
+
+`assay quality-calibrate` produces the file from human labels
+(`task_uuid,subject,dimension,rating,rater[,split]`; integer 1–5 per dimension, validated).
+Protocol floors (`DEFAULT_GATES`, flags may only tighten what a reader accepts): ≥ 50 complete
+subjects, ≥ 2 ratings per subject×dimension cell, ≥ 20 dev and ≥ 30 holdout, inter-rater
+quadratic-weighted κ ≥ 0.60, holdout Spearman ≥ 0.60 and Pearson ≥ 0.60 between the judge's
+ratio and the mean normalised human rating `(r−1)/4`, per-dimension balanced accuracy ≥ 0.65
+with human ≥ 4 as "pass" (skipped where a holdout dimension lacks both classes). Every subject's
+verdicts must carry the current fingerprint for that bundle's instruction, patch, manifest and
+judge; stale, incomplete or missing subjects are listed and a stale one fails the run. The
+dev/holdout split is per subject (a hash of `uuid/subject` against `--holdout-fraction`,
+default 0.6) so adding or removing labels cannot move a subject; a `split` column overrides it
+and the assignment is recorded in the document with the labels' sha256. The floors are
+proposals pending the TL's confirmation.
+
+---
+
 ## 4. Stage 4 — the plain-average process score (kappa removed, 2026-08-13)
 
 **File:** `assay/compose.py` (`process_score`).
@@ -239,6 +310,9 @@ which **silently zero-weighted the judge channel** on every single-judge run.
 That machinery (`assay/agreement.py`, the council block, dissent statistics) was
 removed per the change spec "remove kappa, keep alpha" — see `REWARD_CHANGE_LOG.md`
 for the full before/after map and revert instructions.
+
+The quality channel (§3b) is not a third process channel: `process` stays the average of
+exactly two, and `score_quality` is reported beside it.
 
 ---
 
@@ -325,9 +399,20 @@ Rounding: `outcome` 2 dp (from v2g); `process`, `score_eval`, `score_rl`,
 - `verifier_result.assay = { alpha, gate, stratum_size, judge, status }`.
 - The write is skipped when nothing changed (idempotent) and when the run isn't
   scoreable (`assay_scores` returns `{}` without a composition, `writeback.py:30`).
+- `quality-score --write` adds `verifier_result.quality = { quality_version, prompt_digest,
+  judge, status, calibrated, quality_fingerprint }` and, only when calibrated,
+  `scores.score_quality` (`writeback.py::merge_quality`). `score --write` leaves both alone.
+
+**`verifier/quality.json`** = `QualityReport.to_dict()` (`quality.py`): `version.{quality,
+prompt_digest, manifest_digest}`, `status` (`scored | unjudged | evidence_missing |
+empty_patch`), `calibrated`, `judge.{member, model}`, `patch.{source, sha256, bytes,
+truncated}`, `quality_fingerprint`, `score`, `counts`, `reasons`, `items[]`.
+**`verifier/quality_verdicts.jsonl`** is the raw record copy.
 
 **`verifier/final_score.md`** — a human-readable table of the same numbers
-(`_score_md`, `cli.py:296`). **`verifier/score.md`** (bare outcome float) was written
+(`_score_md`, `cli.py:296`), plus a `<!-- quality -->` … `<!-- /quality -->` block once
+`quality-score --write` has run; `score --write` regenerates that block from
+`verifier/quality.json` so the two passes can run in either order. **`verifier/score.md`** (bare outcome float) was written
 earlier by the export step and is what `A4-score-agreement` cross-checks against.
 
 ---
@@ -386,6 +471,8 @@ so the voided run remains readable.
 | `…scores.score_eval` | `compose.py` | `gate·((1−2α)·outcome + 2α·process)` |
 | `…scores.score_rl` | `compose.py` | same, process min-max normalised in outcome stratum |
 | `…assay.{alpha,gate,stratum_size,judge,status}` | `writeback.py:52` | interpretation metadata |
+| `…scores.score_quality` (calibrated bundles only) | `quality.py` via `quality_cli.py` | `Σ w·[satisfied] / Σ w` over the seven quality items, null unless all seven decided; never enters the reward |
+| `…quality.{quality_version,prompt_digest,judge,status,calibrated,quality_fingerprint}` | `writeback.py::merge_quality` | quality channel metadata, written even in shadow mode |
 
 ---
 

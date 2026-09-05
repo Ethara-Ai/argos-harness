@@ -174,17 +174,34 @@ def lint_rubric(rubric_path: str | Path, task_tokens: Iterable[str] = ()) -> Lin
             [Finding("ERROR", "", "R001-empty", "rubric declares no items")]
         )
 
-    seen_ids: set[str] = set()
     tokens = {t.lower() for t in task_tokens if t}
     # `requires` may name an item declared later, and the shared preamble is
     # merged in at scoring time, so a bare id is resolved against both.
     known_ids = {str(i.get("id")) for i in items} | _preamble_ids()
+    findings.extend(
+        _lint_item_list(
+            items, allowed_dimensions=ALLOWED_DIMENSIONS, known_ids=known_ids
+        )
+    )
+    findings.extend(_check_sibling_overlap(items))
+    findings.extend(_check_bundle(items, tokens))
+    return LintResult(findings)
 
+
+def _lint_item_list(
+    items: list[dict[str, Any]],
+    *,
+    allowed_dimensions: frozenset[str],
+    known_ids: set[str],
+) -> list[Finding]:
+    """The per-item rules, shared by the rubric and the quality block."""
+    findings: list[Finding] = []
+    seen_ids: set[str] = set()
     for item in items:
         iid = str(item.get("id") or "<no-id>")
         findings.extend(_check_fields(iid, item))
         findings.extend(_check_weight(iid, item))
-        findings.extend(_check_enums(iid, item))
+        findings.extend(_check_enums(iid, item, allowed_dimensions))
         findings.extend(_check_prose(iid, item))
         findings.extend(_check_mechanical(iid, item))
         findings.extend(_check_narration(iid, item))
@@ -192,9 +209,62 @@ def lint_rubric(rubric_path: str | Path, task_tokens: Iterable[str] = ()) -> Lin
         if iid in seen_ids:
             findings.append(Finding("ERROR", iid, "R002-dup-id", "duplicate item id"))
         seen_ids.add(iid)
+    return findings
 
+
+def lint_quality(quality_path: str | Path) -> LintResult:
+    """Validate a tests/quality.json (or the assay/quality.json manifest).
+
+    Same per-item rules as the rubric, with the quality dimension vocabulary.
+    The bundle-level rules do not apply: the block is all positive by design
+    and is generic to every task on purpose.
+    """
+    from .quality import QUALITY_DIMENSIONS
+
+    path = Path(quality_path)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8")) or {}
+    except ValueError as exc:
+        return LintResult(
+            [
+                Finding(
+                    "ERROR", "", "Q000-parse", f"quality.json is not valid JSON: {exc}"
+                )
+            ]
+        )
+    items = doc.get("items") or []
+    if not items:
+        return LintResult(
+            [Finding("ERROR", "", "Q001-empty", "quality block declares no items")]
+        )
+    findings = _lint_item_list(
+        items,
+        allowed_dimensions=QUALITY_DIMENSIONS,
+        known_ids={str(i.get("id")) for i in items},
+    )
+    dims = sorted(str(i.get("dimension") or "") for i in items)
+    if dims != sorted(QUALITY_DIMENSIONS):
+        findings.append(
+            Finding(
+                "ERROR",
+                "",
+                "Q002-dimension-set",
+                f"quality block must carry exactly one item per dimension "
+                f"{sorted(QUALITY_DIMENSIONS)}, got {dims}",
+            )
+        )
+    for i in items:
+        w = i.get("weight")
+        if isinstance(w, int) and w < 0:
+            findings.append(
+                Finding(
+                    "ERROR",
+                    str(i.get("id")),
+                    "Q003-negative",
+                    "quality items are positive only; there are no quality guardrails",
+                )
+            )
     findings.extend(_check_sibling_overlap(items))
-    findings.extend(_check_bundle(items, tokens))
     return LintResult(findings)
 
 
@@ -554,16 +624,20 @@ def _check_weight(iid: str, item: dict[str, Any]) -> list[Finding]:
     return []
 
 
-def _check_enums(iid: str, item: dict[str, Any]) -> list[Finding]:
+def _check_enums(
+    iid: str,
+    item: dict[str, Any],
+    allowed_dimensions: frozenset[str] = ALLOWED_DIMENSIONS,
+) -> list[Finding]:
     out = []
     d = item.get("dimension")
-    if d and d not in ALLOWED_DIMENSIONS:
+    if d and d not in allowed_dimensions:
         out.append(
             Finding(
                 "ERROR",
                 iid,
                 "R030-dimension",
-                f"unknown dimension '{d}', allowed {sorted(ALLOWED_DIMENSIONS)}",
+                f"unknown dimension '{d}', allowed {sorted(allowed_dimensions)}",
             )
         )
     t = item.get("evaluation_target")

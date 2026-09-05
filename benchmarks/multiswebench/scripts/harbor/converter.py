@@ -1663,6 +1663,41 @@ def load_sidecar_metadata(run_dir: Path) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+AGENT_PATCH_NAME = "agent.patch"
+
+
+def write_agent_patch(traj_dir: Path, git_patch: str) -> list[dict[str, Any]]:
+    """Ship the agent's final diff with the run and describe it in the manifest.
+
+    The corpus never carried the patch: ``artifacts/`` was empty in every
+    delivered run and the only record of what the agent changed was a lossy
+    replay of editor calls (see assay/bundle.py). The inference record holds the
+    exact ``git diff <base> HEAD`` text, so the bytes land here verbatim. An
+    empty patch is not written, and the manifest says so, because a zero-byte
+    file would read as a recorded (empty) change rather than as no record.
+    """
+    artifacts = Path(traj_dir) / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    patch_path = artifacts / AGENT_PATCH_NAME
+    entry: dict[str, Any] = {
+        "source": "/logs/artifacts",
+        "destination": "artifacts",
+        "type": "directory",
+        "status": "empty",
+    }
+    if git_patch:
+        patch_path.write_bytes(git_patch.encode("utf-8"))
+        entry["status"] = "present"
+        entry["files"] = [AGENT_PATCH_NAME]
+    elif patch_path.exists():
+        patch_path.unlink()
+    manifest = [entry]
+    (artifacts / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
+    return manifest
+
+
 def build_trajectory(
     run_dir: Path,
     model: str,
@@ -1955,16 +1990,8 @@ def build_trajectory(
     else:
         pane_target.write_text(synthesize_pane_dump(history), encoding="utf-8")
 
-    manifest = [
-        {
-            "source": "/logs/artifacts",
-            "destination": "artifacts",
-            "type": "directory",
-            "status": "empty",
-        }
-    ]
-    (traj_dir / "artifacts" / "manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    write_agent_patch(
+        traj_dir, str((record.get("test_result") or {}).get("git_patch") or "")
     )
 
     (traj_dir / "verifier" / "score.md").write_text(

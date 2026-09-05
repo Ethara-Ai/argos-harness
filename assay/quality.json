@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "quality_version": "quality-v1",
+  "description": "Fixed code-quality block judged on the agent's final diff. One positive Yes/No item per dimension, equal weights. Publish-only: score_quality never enters process, score_eval or score_rl.",
+  "items": [
+    {
+      "id": "Q1",
+      "dimension": "conventions",
+      "weight": 3,
+      "evaluation_target": "final_diff",
+      "criterion": "The change follows the conventions already used in the surrounding code for style, error handling, imports, and logging.",
+      "evaluation_rule": "Answer Yes if the added and modified code matches the formatting, naming style, error handling, import ordering, and logging habits visible in the unchanged context lines of the same files. Answer No if the change introduces a style, an error handling pattern, or a helper usage that the surrounding code does not use.",
+      "evidence": ["final_diff"]
+    },
+    {
+      "id": "Q2",
+      "dimension": "minimal_diff",
+      "weight": 3,
+      "evaluation_target": "final_diff",
+      "criterion": "The change is limited to what the task requires, without unrelated reformatting, renames, or churn.",
+      "evaluation_rule": "Answer Yes if every hunk serves the requested behavior change. Answer No if the diff also reformats untouched lines, renames or moves code the task did not require, or edits files unrelated to the task.",
+      "evidence": ["final_diff"]
+    },
+    {
+      "id": "Q3",
+      "dimension": "abstraction",
+      "weight": 3,
+      "evaluation_target": "final_diff",
+      "criterion": "The change uses a level of abstraction that fits the task, neither duplicating logic nor adding layers the task does not need.",
+      "evaluation_rule": "Answer Yes if repeated logic is shared where the codebase already shares it and no new class, layer, or indirection appears without a second caller or a stated need. Answer No if the diff copies logic that a nearby helper already provides, or introduces abstractions used from one place only.",
+      "evidence": ["final_diff"]
+    },
+    {
+      "id": "Q4",
+      "dimension": "readability",
+      "weight": 3,
+      "evaluation_target": "final_diff",
+      "criterion": "The changed code reads clearly, with straightforward control flow and comments only where they add information.",
+      "evaluation_rule": "Answer Yes if a maintainer can follow each changed function without tracing hidden state, nesting stays shallow, and comments explain intent rather than restate the code. Answer No if the change adds deeply nested branches, long functions doing several jobs, or comments that restate what the code already says.",
+      "evidence": ["final_diff"]
+    },
+    {
+      "id": "Q5",
+      "dimension": "naming",
+      "weight": 3,
+      "evaluation_target": "final_diff",
+      "criterion": "New and changed identifiers are clear, consistent with nearby names, and describe what they hold or do.",
+      "evaluation_rule": "Answer Yes if every new function, variable, and parameter name says what it holds or does and follows the casing and vocabulary of the surrounding code. Answer No if the diff introduces single letter names outside tight loops, misleading names, abbreviations the codebase does not use, or names that clash with nearby conventions.",
+      "evidence": ["final_diff"]
+    },
+    {
+      "id": "Q6",
+      "dimension": "idiomaticity",
+      "weight": 3,
+      "evaluation_target": "final_diff",
+      "criterion": "The change uses the idioms of the language and framework already in use rather than patterns foreign to the codebase.",
+      "evaluation_rule": "Answer Yes if the added code uses the language's standard constructs and the framework's own facilities the way the rest of the repository does. Answer No if it reimplements a standard library or framework feature, uses constructs the codebase avoids, or ports a pattern from another language.",
+      "evidence": ["final_diff"]
+    },
+    {
+      "id": "Q7",
+      "dimension": "dead_code",
+      "weight": 3,
+      "evaluation_target": "final_diff",
+      "criterion": "The change adds no dead, unreachable, commented out, or speculative defensive code.",
+      "evaluation_rule": "Answer Yes if every added line can execute on some path the task needs and no guard defends against a condition the code cannot reach. Answer No if the diff adds unused imports, variables, or functions, commented out code, debugging leftovers, or checks for situations the surrounding code already rules out.",
+      "evidence": ["final_diff"]
+    }
+  ]
+}

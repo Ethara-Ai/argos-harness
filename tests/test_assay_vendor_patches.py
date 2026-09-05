@@ -277,3 +277,42 @@ class TestTruthUnderSolution:
             root = self._bundle(tmp_path / rel.replace("/", "_"), rel)
             (root / "tests" / "rubrics.json").write_text(json.dumps(spec))
             assert _find_spec(root / rel) == root / "tests" / "rubrics.json", rel
+
+
+class TestAgentPatchReader:
+    """RunBundle reads the shipped diff and reports absence as None, never as
+    a reconstruction."""
+
+    def _run(self, root: Path, patch: str | None) -> Path:
+        rd = root / "1234" / "trajectories" / "opus-5" / "run_1"
+        (rd / "artifacts").mkdir(parents=True)
+        (rd / "result.json").write_text("{}")
+        if patch is not None:
+            (rd / "artifacts" / "agent.patch").write_text(patch, encoding="utf-8")
+        return rd
+
+    def test_present(self, tmp_path: Path):
+        import hashlib
+
+        from assay.bundle import RunBundle
+
+        run = RunBundle(self._run(tmp_path, "diff --git a/x b/x\n"))
+        assert run.agent_patch == "diff --git a/x b/x\n"
+        assert (
+            run.agent_patch_sha256
+            == hashlib.sha256(b"diff --git a/x b/x\n").hexdigest()
+        )
+
+    def test_absent_is_none(self, tmp_path: Path):
+        from assay.bundle import RunBundle
+
+        run = RunBundle(self._run(tmp_path, None))
+        assert run.agent_patch is None
+        assert run.agent_patch_sha256 is None
+
+    def test_task_bundle_quality_paths(self):
+        from assay.bundle import TaskBundle
+
+        task = TaskBundle(Path("/nonexistent"))
+        assert task.quality_path == task.root / "tests" / "quality.json"
+        assert task.calibration_path == task.root / "tests" / "judge_calibration.json"

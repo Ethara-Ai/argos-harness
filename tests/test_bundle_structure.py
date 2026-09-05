@@ -28,6 +28,17 @@ pytestmark = pytest.mark.skipif(
 
 IGNORED = ("__pycache__", ".pyc", ".DS_Store")
 
+# The quality channel (2026-09-03) adds files the corpus predates. They are an
+# accepted divergence, like the headerless rubrics.json: publish-only artifacts
+# and the agent's shipped diff, none of which the corpus scorer reads.
+OURS_ONLY = {
+    "tests/quality.json",
+    "tests/judge_calibration.json",
+    "trajectories/<model>/<run>/artifacts/agent.patch",
+    "trajectories/<model>/<run>/verifier/quality.json",
+    "trajectories/<model>/<run>/verifier/quality_verdicts.jsonl",
+}
+
 
 def _fileset(root: Path) -> set[str]:
     out = set()
@@ -48,7 +59,7 @@ def _first_run(root: Path) -> Path:
 
 
 def test_file_set_matches_corpus():
-    assert _fileset(OURS) == _fileset(REF)
+    assert _fileset(OURS) - OURS_ONLY == _fileset(REF)
 
 
 def test_rubrics_json_structure():
@@ -197,7 +208,18 @@ def test_final_score_md_template():
         text = re.sub(r"\*\*process\*\* = [^|]+", "**process** = X ", text)
         return text
 
-    ours = normalize((_first_run(OURS) / "verifier" / "final_score.md").read_text())
+    from assay.quality import QUALITY_MD_END, QUALITY_MD_START
+
+    def without_quality(text: str) -> str:
+        # the quality block is appended by quality-score and is ours only
+        s, e = text.find(QUALITY_MD_START), text.find(QUALITY_MD_END)
+        if s != -1 and e != -1:
+            text = text[:s] + text[e + len(QUALITY_MD_END) :]
+        return text.rstrip("\n") + "\n"
+
+    ours = normalize(
+        without_quality((_first_run(OURS) / "verifier" / "final_score.md").read_text())
+    )
     ref = normalize((_first_run(REF) / "verifier" / "final_score.md").read_text())
     assert ours == ref
 
@@ -220,8 +242,10 @@ def test_result_json_writeback_structure():
     ref_vr = json.loads((_first_run(REF) / "result.json").read_text())[
         "verifier_result"
     ]
-    assert set(ours_vr) == set(ref_vr)  # incl.: no retired WCB "rubric" block
-    assert set(ours_vr["scores"]) == set(ref_vr["scores"])
+    # incl.: no retired WCB "rubric" block; the quality status block and its
+    # publish-only score are the accepted additions (see OURS_ONLY)
+    assert set(ours_vr) - {"quality"} == set(ref_vr)
+    assert set(ours_vr["scores"]) - {"score_quality"} == set(ref_vr["scores"])
     for vr, root in ((ours_vr, OURS), (ref_vr, REF)):
         for key in (
             "score",

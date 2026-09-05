@@ -304,6 +304,12 @@ def _cmd_attach(args: argparse.Namespace) -> int:
     )
 
 
+def _cmd_attach_patch(args: argparse.Namespace) -> int:
+    from benchmarks.multiswebench.scripts.rubric.attach_patch import main as attach
+
+    return attach(args.run_base, args.dest, args.task, args.model)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="multiswebench-rubric", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -405,6 +411,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_attach.add_argument("--assets-root", required=True, type=Path)
     p_attach.add_argument("--instance", default=None)
     p_attach.set_defaults(fn=_cmd_attach)
+
+    p_patch = sub.add_parser(
+        "attach-patch",
+        help="backfill trajectories/<alias>/run_N/artifacts/agent.patch from "
+        "inference run_N/output.jsonl (no converter re-run)",
+    )
+    p_patch.add_argument(
+        "--run-base",
+        required=True,
+        type=Path,
+        help="inference model dir holding run_N/output.jsonl "
+        "(eval_outputs/<tag>/<model>)",
+    )
+    p_patch.add_argument("--dest", required=True, type=Path, help="bundles root")
+    p_patch.add_argument("--task", required=True, help="bundle uuid")
+    p_patch.add_argument(
+        "--model",
+        default=None,
+        help="model dir name to alias (default: basename of --run-base)",
+    )
+    p_patch.set_defaults(fn=_cmd_attach_patch)
 
     return parser
 

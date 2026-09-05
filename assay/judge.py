@@ -24,6 +24,8 @@ import urllib.request
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from .bundle import _UUID_RE
+
 
 __all__ = [
     "COUNCIL",
@@ -136,9 +138,6 @@ def select_members(spec: str | None) -> list[str]:
 
 def shard(runs: Sequence[str], index: int, total: int) -> list[str]:
     return [r for i, r in enumerate(runs) if i % total == index]
-
-
-from .bundle import _UUID_RE
 
 
 def resolve_verdict_dir(out_dir: Path, uuid: str) -> Path:

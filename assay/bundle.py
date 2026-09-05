@@ -159,6 +159,20 @@ class TaskBundle:
         return self.tests_dir / "rubrics.json"
 
     @property
+    def quality_path(self) -> Path:
+        """The fixed code-quality item block, materialized from assay/quality.json.
+
+        Kept apart from rubrics.json on purpose: the rubric fingerprint digests
+        every item in that file, so adding quality items there would invalidate
+        every recorded correctness verdict for no gain.
+        """
+        return self.tests_dir / "quality.json"
+
+    @property
+    def calibration_path(self) -> Path:
+        return self.tests_dir / "judge_calibration.json"
+
+    @property
     def trajectories_dir(self) -> Path:
         """The task's own runs. Keeping them under the task root makes a
         bundle self-contained: one directory carries the task, its reference
@@ -248,6 +262,33 @@ class RunBundle:
     @property
     def trajectory_path(self) -> Path:
         return self.root / "agent" / "trajectory.json"
+
+    # -- the agent's final diff, when the converter shipped it ---------------
+
+    @property
+    def agent_patch_path(self) -> Path:
+        return self.root / "artifacts" / "agent.patch"
+
+    @property
+    def agent_patch(self) -> str | None:
+        """The exact ``git diff <base> HEAD`` recorded at inference, or None.
+
+        Runs converted before the patch was shipped have no file here. Callers
+        must treat None as missing evidence, never fall back to the
+        reconstructed edit set: that replay is a lower bound and a quality or
+        scope judgement made on it would be made on a guess.
+        """
+        p = self.agent_patch_path
+        if not p.is_file():
+            return None
+        return p.read_text(encoding="utf-8", errors="replace")
+
+    @property
+    def agent_patch_sha256(self) -> str | None:
+        p = self.agent_patch_path
+        if not p.is_file():
+            return None
+        return hashlib.sha256(p.read_bytes()).hexdigest()
 
     @property
     def has_trajectory(self) -> bool:

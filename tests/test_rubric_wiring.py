@@ -141,3 +141,49 @@ class TestEntryPoint:
         # on Codex -- an openai/ judge needs the "responses/" segment here.
         assert cfg["judge_model"] == "openai/responses/gpt-5.6-sol"
         assert cfg["author_model"] == "anthropic/claude-opus-5"
+
+
+class TestQualityWiring:
+    """The quality channel runs after the rubric score, inside the rubric
+    block, with an explicit judge config, and can never touch rrc."""
+
+    def test_quality_runs_after_rubric_score_and_before_staging(
+        self, run_eval_src: str
+    ):
+        score = run_eval_src.index('score --task "$DS_UUID"')
+        ok_log = run_eval_src.index('log "rubric: reward ok -> ${ARGOS_BUNDLE}"')
+        qinit = run_eval_src.index('quality-init --task "$DS_UUID"')
+        qjudge = run_eval_src.index("quality-judge ")
+        qscore = run_eval_src.index("quality-score ")
+        stage = run_eval_src.index('stage_dataset "$DATASET_TAG"')
+        assert score < ok_log < qinit < qjudge < qscore < stage
+
+    def test_quality_takes_judge_config_explicitly(self, run_eval_src: str):
+        assert (
+            'QUALITY_ARGS=(--judge-config "$RUBRIC_CFG" --task "$DS_UUID")'
+            in run_eval_src
+        )
+        # never derived from the council env: the corpus roster must not leak in
+        block = run_eval_src[run_eval_src.index("quality-judge ") :]
+        block = block[: block.index('stage_dataset "$DATASET_TAG"')]
+        assert "ASSAY_ENV" not in block
+
+    def test_quality_is_shadow_by_default_and_opt_out(self, run_eval_src: str):
+        assert "RUBRIC_QUALITY_ENABLE:-1" in run_eval_src
+        assert "RUBRIC_QUALITY_SHADOW:-1" in run_eval_src
+        assert "QUALITY_SCORE_ARGS+=(--shadow)" in run_eval_src
+
+    def test_quality_failure_never_changes_rrc(self, run_eval_src: str):
+        block = run_eval_src[run_eval_src.index("quality-judge ") :]
+        block = block[: block.index('stage_dataset "$DATASET_TAG"')]
+        assert "rrc=$?" not in block
+        assert "qrc=$?" in block
+        assert "reward unaffected" in block
+
+    def test_quality_shares_the_verdict_store_root(self, run_eval_src: str):
+        # quality-judge writes under <store>/quality/<uuid>; the rubric's
+        # <store>/<uuid> must be the same root so one --data-dir layout holds both
+        block = run_eval_src[run_eval_src.index("RUBRIC_QUALITY_ENABLE") :]
+        block = block[: block.index('stage_dataset "$DATASET_TAG"')]
+        assert '--out "${ARGOS_DEST}/verdicts"' in block
+        assert '--verdicts "${ARGOS_DEST}/verdicts"' in block

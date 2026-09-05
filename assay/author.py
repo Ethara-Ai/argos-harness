@@ -189,9 +189,9 @@ def pick_sites(
         # A removed line that reappears among the added ones was modified,
         # not deleted, so forbidding it fails on the reference itself.
         gone = [
-            l
-            for l in c.removed
-            if l.strip() and not any(l.strip() in a for a in c.added)
+            line
+            for line in c.removed
+            if line.strip() and not any(line.strip() in a for a in c.added)
         ]
         removed = [] if probes else extract_probes(gone, [], probes_per_site)
         sites.append(Site(c.path, kinds[c.path], probes, removed, c.churn))

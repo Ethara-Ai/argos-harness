@@ -82,6 +82,11 @@ include = ["benchmarks", "assay"]
 # Install the top-level sitecustomize module so Python auto-loads our Modal logging patch.
 py-modules = ["sitecustomize"]
 
+[tool.setuptools.package-data]
+# Runtime data the scorer reads beside its modules; without this a built wheel
+# ships neither the shared rubric preamble nor the quality manifest.
+assay = ["preamble.json", "quality.json"]
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.3.0",

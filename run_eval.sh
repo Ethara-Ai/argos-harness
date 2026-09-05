@@ -1324,7 +1324,43 @@ print(proxy)
                     if [[ $rrc -ne 0 ]]; then
                         log "rubric: WARN export/author/judge/score exit $rrc (see ${RUN_BASE}/rubric.log)"
                     else
-                        log "rubric: ok -> ${ARGOS_BUNDLE}"
+                        log "rubric: reward ok -> ${ARGOS_BUNDLE}"
+                    fi
+                    # ── Quality channel (publish-only; never part of reward) ──
+                    # Judged on the shipped artifacts/agent.patch with the same
+                    # judge_model, passed explicitly so a run outside this
+                    # script can never fall back to the corpus roster. Shadow
+                    # by default: verifier/quality.json is written, but
+                    # scores.score_quality is withheld until a passing
+                    # tests/judge_calibration.json ships with the bundle. A
+                    # quality failure is logged and never changes rrc. The
+                    # "reward ok" line above is the reward chain's own verdict;
+                    # quality reports separately below.
+                    if [[ $rrc -eq 0 && "${RUBRIC_QUALITY_ENABLE:-1}" == "1" ]]; then
+                        local qrc=0 QUALITY_ARGS=(--judge-config "$RUBRIC_CFG" --task "$DS_UUID")
+                        local QUALITY_SCORE_ARGS=(--verdicts "${ARGOS_DEST}/verdicts" --write)
+                        [[ "${RUBRIC_QUALITY_SHADOW:-1}" == "1" ]] && QUALITY_SCORE_ARGS+=(--shadow)
+                        # idempotent: bundles authored before the channel
+                        # existed carry no tests/quality.json, and judging
+                        # refuses without it
+                        uv run python -m assay --delivery "$ARGOS_DEST" \
+                            quality-init --task "$DS_UUID" \
+                            >>"${RUN_BASE}/rubric.log" 2>&1 || qrc=$?
+                        if [[ $qrc -eq 0 ]]; then
+                            uv run python -m assay --delivery "$ARGOS_DEST" \
+                                quality-judge "${QUALITY_ARGS[@]}" --out "${ARGOS_DEST}/verdicts" \
+                                >>"${RUN_BASE}/rubric.log" 2>&1 || qrc=$?
+                        fi
+                        if [[ $qrc -eq 0 ]]; then
+                            uv run python -m assay --delivery "$ARGOS_DEST" \
+                                quality-score "${QUALITY_ARGS[@]}" "${QUALITY_SCORE_ARGS[@]}" \
+                                >>"${RUN_BASE}/rubric.log" 2>&1 || qrc=$?
+                        fi
+                        if [[ $qrc -ne 0 ]]; then
+                            log "rubric: WARN quality judge/score exit $qrc (see ${RUN_BASE}/rubric.log); reward unaffected"
+                        else
+                            log "rubric: quality ok -> ${ARGOS_BUNDLE}"
+                        fi
                     fi
                 fi
             fi

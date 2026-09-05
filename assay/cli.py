@@ -280,7 +280,10 @@ def _score_md(r) -> str:
     alpha = comp.get("alpha", r.beta)
     ev = comp.get("score_eval", r.blended_score if r.is_judged else None)
     rl = comp.get("score_rl")
-    fmt = lambda v: f"{v:.4f}" if isinstance(v, (int, float)) else "—"
+
+    def fmt(v):
+        return f"{v:.4f}" if isinstance(v, (int, float)) else "—"
+
     return (
         f"# Score — {r.model}/{r.run_id}\n\n"
         f"Task: {r.instance_id} (`{r.task_uuid}`)  \n"
@@ -647,7 +650,20 @@ def cmd_score(args) -> int:
             (vd / "process.json").write_text(
                 json.dumps(r.to_dict(), indent=2), encoding="utf-8"
             )
-            (vd / "final_score.md").write_text(_score_md(r), encoding="utf-8")
+            md = _score_md(r)
+            # A quality pass that ran before this re-score leaves its block in
+            # final_score.md; regenerate it from verifier/quality.json rather
+            # than dropping it, so the two passes can run in either order.
+            qpath = vd / "quality.json"
+            if qpath.is_file():
+                from .quality import upsert_quality_block
+                from .quality_cli import quality_md_from_doc
+
+                md = upsert_quality_block(
+                    md,
+                    quality_md_from_doc(json.loads(qpath.read_text(encoding="utf-8"))),
+                )
+            (vd / "final_score.md").write_text(md, encoding="utf-8")
             src = verdicts / f"{r.model}__{r.run_id}.jsonl" if verdicts else None
             if src and src.is_file():
                 (vd / "verdicts.jsonl").write_text(
@@ -685,9 +701,9 @@ def _replay_rubric(
         return None
     members = scoring_members(
         {
-            json.loads(l)["member"]
-            for l in path.read_text(encoding="utf-8").splitlines()
-            if l.strip()
+            json.loads(line)["member"]
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
         }
     )
     if not members:
@@ -960,6 +976,12 @@ def cmd_author(args) -> int:
     rubric["sites"] = deterministic["sites"]
     task.rubric_path.write_text(json.dumps(rubric, indent=2) + "\n", encoding="utf-8")
     task.pytest_spec_path.parent.joinpath("pytest.json").unlink(missing_ok=True)
+    # The fixed quality block ships with every authored bundle, verbatim from
+    # the manifest, so a bundle is self-describing about what its quality
+    # score was judged against.
+    from .quality import MANIFEST_PATH as _QUALITY_MANIFEST
+
+    task.quality_path.write_bytes(_QUALITY_MANIFEST.read_bytes())
     print(
         f"{task.uuid} sites={len(sites)} "
         f"measurable={sum(1 for s in sites if s.probes or s.removed_probes)}"
@@ -1121,6 +1143,12 @@ def build_parser() -> argparse.ArgumentParser:
         "into each run's verifier/ directory",
     )
     p.set_defaults(func=cmd_score)
+
+    # The quality channel's commands live in their own module; they take the
+    # judge explicitly and never touch ASSAY_COUNCIL.
+    from .quality_cli import register as register_quality
+
+    register_quality(sub)
 
     return ap
 

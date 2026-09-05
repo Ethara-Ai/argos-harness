@@ -67,3 +67,32 @@ def strip_assay_scores(scores: dict[str, Any]) -> dict[str, Any]:
     for f in ASSAY_SCORE_FIELDS:
         scores.pop(f, None)
     return scores
+
+
+QUALITY_FIELDS = ("score_quality",)
+
+
+def merge_quality(
+    vr: dict[str, Any], doc: dict[str, Any], *, publish_score: bool
+) -> dict[str, Any]:
+    """Publish the quality channel: a status block always, the number only when
+    the judge is calibrated.
+
+    ``score_quality`` never enters ``assay_scores``/``assay_block`` above, so
+    ``score --write`` and ``strip_assay_scores`` leave it alone: the channel is
+    owned by ``quality-score`` and reports beside the reward, not inside it.
+    """
+    vr["quality"] = {
+        "quality_version": (doc.get("version") or {}).get("quality"),
+        "prompt_digest": (doc.get("version") or {}).get("prompt_digest"),
+        "judge": (doc.get("judge") or {}).get("model"),
+        "status": doc.get("status"),
+        "calibrated": bool(doc.get("calibrated")),
+        "quality_fingerprint": doc.get("quality_fingerprint"),
+    }
+    scores = vr.setdefault("scores", {})
+    if publish_score and doc.get("score") is not None:
+        scores["score_quality"] = doc["score"]
+    else:
+        scores.pop("score_quality", None)
+    return vr
