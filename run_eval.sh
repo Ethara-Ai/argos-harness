@@ -98,7 +98,7 @@ Runs:
   --start-run N             Resume each dataset from run N              [default: 1]
 
 Inference:
-  --max-iter N              Max agent iterations per instance           [default: 1000]
+  --max-iter N              Max agent iterations per instance           [default: 350]
   --num-workers N           Inference workers within a dataset          [default: 1]
   --max-retries N           Retries for crashed instances               [default: 3]
   --workspace TYPE          docker or remote                            [default: docker]
