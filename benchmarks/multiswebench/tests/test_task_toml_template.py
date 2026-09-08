@@ -3,6 +3,7 @@ from pathlib import Path
 
 from benchmarks.multiswebench.scripts.harbor.converter import (
     TASK_CATEGORIES,
+    UNBANDED_DIFFICULTY,
     render_literal,
 )
 
@@ -88,7 +89,6 @@ def _render_sample() -> dict[str, object]:
         task_uuid="0e2c6cfa-2a9f-5a4e-9c4a-2f2b1f7a1d55",
         language="python",
         repo_name="conan",
-        difficulty="medium",
         category="bug_fixing",
         verifier_timeout="7200.0",
         agent_timeout="14400.0",
@@ -150,7 +150,9 @@ def test_rendered_template_parses_with_expected_metadata() -> None:
     parsed = _render_sample()
     metadata = parsed["metadata"]
     assert isinstance(metadata, dict)
-    assert metadata["difficulty"] == "medium"
+    # Difficulty is the reference model's pass rate and is known only after the
+    # rollout, so conversion seeds "unbanded" for backfill to overwrite.
+    assert metadata["difficulty"] == UNBANDED_DIFFICULTY
     assert metadata["category"] == "bug_fixing"
     assert metadata["category"] in TASK_CATEGORIES
 

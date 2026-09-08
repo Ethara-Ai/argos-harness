@@ -1,10 +1,10 @@
 """Pins for the difficulty backfill.
 
-Difficulty is the reference models' pass rate, so it is written after the
-rollout rather than at conversion. The load-bearing behaviours are that pass@k
-resolves to the best attempt (never the mean), that a bundle whose runs did not
-all score is reported instead of silently banded from the survivors, and that
-preflight writes nothing.
+Difficulty is the reference model's pass rate, so it is written after the
+rollout rather than at conversion. The load-bearing behaviours are that the
+band comes from the mean of the reference model's own runs and no other
+model's, that a bundle whose runs did not all score is reported instead of
+silently banded from the survivors, and that preflight writes nothing.
 """
 
 from __future__ import annotations
@@ -12,11 +12,13 @@ from __future__ import annotations
 import json
 import tomllib
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
 from benchmarks.multiswebench.scripts.harbor.backfill_difficulty import (
+    REFERENCE_MODEL,
     TARGET_MIX,
     backfill_bundle,
     mix_report,
@@ -24,7 +26,10 @@ from benchmarks.multiswebench.scripts.harbor.backfill_difficulty import (
 
 
 def _bundle(
-    root: Path, rates: list[float | None], difficulty: str = "unbanded"
+    root: Path,
+    rates: Sequence[float | None],
+    difficulty: str = "unbanded",
+    model: str = REFERENCE_MODEL,
 ) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "task.toml").write_text(
@@ -32,7 +37,7 @@ def _bundle(
         encoding="utf-8",
     )
     for index, rate in enumerate(rates, 1):
-        run = root / "trajectories" / "opus-5" / f"run_{index}"
+        run = root / "trajectories" / model / f"run_{index}"
         run.mkdir(parents=True)
         scores = {} if rate is None else {"score_eval": rate}
         (run / "result.json").write_text(
@@ -43,7 +48,7 @@ def _bundle(
 
 def _difficulty_of(bundle: Path) -> str:
     parsed = tomllib.loads((bundle / "task.toml").read_text(encoding="utf-8"))
-    return parsed["metadata"]["difficulty"]
+    return parsed["metadata"].get("difficulty", "")
 
 
 @pytest.mark.parametrize(
@@ -69,20 +74,42 @@ def test_single_run_bands_on_that_run(tmp_path, pass_rate, expected):
     assert _difficulty_of(bundle) == expected
 
 
-def test_pass_at_8_takes_the_best_attempt(tmp_path):
-    # Seven near-failures and one solve is a solved task: pass@k is "at least
-    # one", so the mean would label it expert when it is in fact trivial.
+def test_band_is_the_mean_not_the_best_attempt(tmp_path):
+    # Seven near-failures and one solve average to 0.1588, so the run set bands
+    # expert. The best attempt alone would have said trivial.
     bundle = _bundle(tmp_path / "b", [0.05] * 7 + [0.92])
     result = backfill_bundle(bundle)
-    assert result.difficulty == "trivial"
-    assert "pass@8" in result.message
-    assert "best=0.9200" in result.message
+    assert result.difficulty == "expert"
+    assert "mean=0.1588" in result.message
+    assert "n=8" in result.message
 
 
-def test_pass_at_1_and_pass_at_8_share_one_rule(tmp_path):
-    single = backfill_bundle(_bundle(tmp_path / "one", [0.40]))
-    eight = backfill_bundle(_bundle(tmp_path / "eight", [0.40] + [0.10] * 7))
-    assert single.difficulty == eight.difficulty == "medium"
+def test_only_the_reference_model_moves_the_band(tmp_path):
+    # A second model's runs ride along in the same bundle for comparison. They
+    # must not pull the shipped tier, which is opus-5's alone.
+    bundle = _bundle(tmp_path / "b", [0.40] * 4)
+    _bundle(bundle, [0.05] * 4, model="glm-5.3")
+    result = backfill_bundle(bundle)
+    assert result.difficulty == "medium"
+    assert "ignored glm-5.3" in result.message
+    assert _difficulty_of(bundle) == "medium"
+
+
+def test_a_non_reference_model_can_band_on_request(tmp_path):
+    bundle = _bundle(tmp_path / "b", [0.40] * 4)
+    _bundle(bundle, [0.05] * 4, model="glm-5.3")
+    result = backfill_bundle(bundle, model="glm-5.3")
+    assert result.difficulty == "expert"
+    assert _difficulty_of(bundle) == "expert"
+
+
+def test_bundle_without_a_reference_run_is_refused(tmp_path):
+    bundle = _bundle(tmp_path / "b", [0.40] * 4, model="glm-5.3")
+    result = backfill_bundle(bundle)
+    assert not result.ok
+    assert result.difficulty is None
+    assert result.message == "no opus-5 run, found glm-5.3"
+    assert _difficulty_of(bundle) == "unbanded"
 
 
 def test_partial_run_set_is_flagged_not_silently_banded(tmp_path):
@@ -92,7 +119,7 @@ def test_partial_run_set_is_flagged_not_silently_banded(tmp_path):
     result = backfill_bundle(bundle)
     assert not result.ok
     assert "PARTIAL 3/8 runs scored" in result.message
-    assert result.difficulty == "hard"
+    assert result.difficulty == "expert"
 
 
 def test_complete_run_set_is_not_flagged(tmp_path):
@@ -105,30 +132,56 @@ def test_preflight_writes_nothing(tmp_path):
     bundle = _bundle(tmp_path / "b", [0.40])
     result = backfill_bundle(bundle, preflight=True)
     assert result.difficulty == "medium"
-    assert "would set medium" in result.message
+    assert "would set" in result.message and "-> medium" in result.message
     assert _difficulty_of(bundle) == "unbanded"
 
 
-def test_preflight_reports_the_transition(tmp_path):
+def test_preflight_reports_the_band_and_its_mean(tmp_path):
     bundle = _bundle(tmp_path / "b", [0.40], difficulty="expert")
-    assert "expert -> medium" in backfill_bundle(bundle, preflight=True).message
-    bundle = _bundle(tmp_path / "c", [0.40], difficulty="medium")
-    assert "unchanged" in backfill_bundle(bundle, preflight=True).message
+    message = backfill_bundle(bundle, preflight=True).message
+    assert "opus-5: mean=0.4000 n=1 -> medium" in message
 
 
 def test_rewrite_is_idempotent(tmp_path):
     bundle = _bundle(tmp_path / "b", [0.30])
-    assert backfill_bundle(bundle).message.startswith("set hard")
-    assert backfill_bundle(bundle).message.startswith("already hard")
+    assert backfill_bundle(bundle).message.startswith("set ")
+    assert backfill_bundle(bundle).message.startswith("already ")
     assert _difficulty_of(bundle) == "hard"
 
 
-def test_rewrite_touches_only_the_difficulty_value(tmp_path):
+def test_rewrite_keeps_the_rest_of_the_file(tmp_path):
     bundle = _bundle(tmp_path / "b", [0.30])
     backfill_bundle(bundle)
-    content = (bundle / "task.toml").read_text(encoding="utf-8")
-    assert 'schema_version = "1.0"' in content
-    assert content.count("difficulty") == 1
+    parsed = tomllib.loads((bundle / "task.toml").read_text(encoding="utf-8"))
+    assert parsed["schema_version"] == "1.0"
+    assert parsed["metadata"]["difficulty"] == "hard"
+
+
+def test_rewrite_drops_legacy_per_model_keys(tmp_path):
+    bundle = _bundle(tmp_path / "b", [0.30])
+    toml = bundle / "task.toml"
+    toml.write_text(
+        'schema_version = "1.0"\n\n[metadata]\n'
+        'difficulty_opus5 = "easy"\ndifficulty_glm53 = "expert"\n'
+        'category = "bug_fixing"\n',
+        encoding="utf-8",
+    )
+    assert backfill_bundle(bundle).ok
+    parsed = tomllib.loads(toml.read_text(encoding="utf-8"))
+    assert parsed["metadata"] == {"difficulty": "hard", "category": "bug_fixing"}
+
+
+def test_bundle_without_any_difficulty_key_still_bands(tmp_path):
+    bundle = _bundle(tmp_path / "b", [0.30])
+    toml = bundle / "task.toml"
+    toml.write_text(
+        'schema_version = "1.0"\n\n[metadata]\ncategory = "bug_fixing"\n',
+        encoding="utf-8",
+    )
+    assert backfill_bundle(bundle).ok
+    parsed = tomllib.loads(toml.read_text(encoding="utf-8"))
+    assert parsed["metadata"]["difficulty"] == "hard"
+    assert parsed["metadata"]["category"] == "bug_fixing"
 
 
 @pytest.mark.parametrize("expect", [1, 8])
@@ -137,7 +190,7 @@ def test_expect_runs_refuses_a_mismatched_protocol(tmp_path, expect):
     result = backfill_bundle(bundle, expect_runs=expect)
     assert not result.ok
     assert result.difficulty is None
-    assert f"expected {expect} scored runs" in result.message
+    assert f"expected {expect} scored opus-5 runs, got 4" in result.message
     assert _difficulty_of(bundle) == "unbanded"
 
 
@@ -151,6 +204,7 @@ def test_unscored_bundle_is_left_unbanded(tmp_path):
     result = backfill_bundle(bundle)
     assert not result.ok
     assert result.difficulty is None
+    assert result.message == "no scored opus-5 run (2 result.json found)"
     assert _difficulty_of(bundle) == "unbanded"
 
 

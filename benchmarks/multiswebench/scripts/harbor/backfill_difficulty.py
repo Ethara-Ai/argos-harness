@@ -9,10 +9,12 @@ Usage:
     uv run python -m benchmarks.multiswebench.scripts.harbor.backfill_difficulty \
         argos_bundles/<uuid> [more_bundle_dirs ...]
 
-One scored run is pass@1 and bands on that run. Several runs are pass@k, which
-resolves to the best attempt, so the band is taken from the highest score_eval
--- never the mean, which would understate a task the models can in fact solve.
-Both cases are the same max(); pass@1 is just k=1.
+One reference model defines the tier -- ``opus-5``, overridable with --model.
+The band is the mean score_eval of that model's runs and is written as the
+single ``difficulty`` key; runs by any other model in the same bundle are
+reported and ignored, and legacy per-model ``difficulty_<model>`` keys are
+dropped. Cut points are unchanged, so a mean-based band reads lower than the
+pass-rate band the thresholds were drawn for.
 
 Run --preflight first. A bundle whose runs did not all score still bands, from
 the runs that did, and a missing run can only ever have raised the maximum --
@@ -27,6 +29,7 @@ import json
 import re
 from collections import Counter
 from pathlib import Path
+from statistics import mean
 from typing import NamedTuple
 
 from benchmarks.multiswebench.scripts.harbor.converter import (
@@ -36,6 +39,10 @@ from benchmarks.multiswebench.scripts.harbor.converter import (
 
 
 RESULT_GLOB = "trajectories/*/run_*/result.json"
+
+# The one model whose pass rate defines the tier. A bundle may hold runs by
+# other models for comparison, but they do not move the shipped difficulty.
+REFERENCE_MODEL = "opus-5"
 
 # Client-specified batch composition. Trivial is banded but not shipped, so its
 # share is zero rather than absent: a trivial task in the batch is a finding.
@@ -55,9 +62,14 @@ class Outcome(NamedTuple):
     difficulty: str | None
 
 
-# Only the value is rewritten, so the key's position and the rest of the file
-# survive byte-for-byte. Anchored to line start to avoid matching prose.
-_DIFFICULTY_RE = re.compile(r'^(difficulty\s*=\s*)"[^"]*"', re.MULTILINE)
+# Anchored to line start to avoid matching prose, and spaced with [ \t] rather
+# than \s so neither pattern can run past its own line. The trailing newline is
+# optional only so a key on the final line still matches.
+_DIFFICULTY_RE = re.compile(r'^difficulty[ \t]*=[ \t]*"[^"]*"\n?', re.MULTILINE)
+_MODEL_DIFFICULTY_RE = re.compile(
+    r'^difficulty_[0-9a-z]+[ \t]*=[ \t]*"[^"]*"\n?', re.MULTILINE
+)
+_METADATA_RE = re.compile(r"^\[metadata\]", re.MULTILINE)
 
 
 def read_pass_rate(result_path: Path) -> float | None:
@@ -74,20 +86,37 @@ def run_results(bundle: Path) -> list[Path]:
     return sorted(bundle.glob(RESULT_GLOB))
 
 
-def scored_runs(bundle: Path) -> list[tuple[Path, float]]:
+def model_of(result_path: Path) -> str:
+    """``trajectories/<model>/run_N/result.json`` -> ``<model>``."""
+    return result_path.parent.parent.name
+
+
+def scored_runs(bundle: Path) -> list[tuple[Path, str, float]]:
     return [
-        (path, rate)
+        (path, model_of(path), rate)
         for path in run_results(bundle)
         if (rate := read_pass_rate(path)) is not None
     ]
 
 
-def write_difficulty(task_toml: Path, difficulty: str) -> bool:
-    """Replace the difficulty value in place. False when already correct."""
+def write_difficulty(task_toml: Path, band: str) -> bool:
+    """Upsert the scalar ``difficulty`` key. False when unchanged.
+
+    One reference model defines the tier, so the per-model
+    ``difficulty_<model>`` keys have nothing left to say and are dropped
+    wherever an older bundle still carries them.
+    """
     content = task_toml.read_text(encoding="utf-8")
-    updated, count = _DIFFICULTY_RE.subn(rf'\g<1>"{difficulty}"', content)
-    if not count:
-        raise ValueError(f"no difficulty key in {task_toml}")
+    if not _METADATA_RE.search(content):
+        raise ValueError(f"no [metadata] table in {task_toml}")
+
+    line = f'difficulty = "{band}"'
+    updated = _MODEL_DIFFICULTY_RE.sub("", content)
+    if _DIFFICULTY_RE.search(updated):
+        updated = _DIFFICULTY_RE.sub(line + "\n", updated, count=1)
+    else:
+        updated = _METADATA_RE.sub(lambda m: m.group(0) + "\n" + line, updated, count=1)
+
     if updated == content:
         return False
     task_toml.write_text(updated, encoding="utf-8")
@@ -95,41 +124,52 @@ def write_difficulty(task_toml: Path, difficulty: str) -> bool:
 
 
 def backfill_bundle(
-    bundle: Path, *, preflight: bool = False, expect_runs: int | None = None
+    bundle: Path,
+    *,
+    preflight: bool = False,
+    expect_runs: int | None = None,
+    model: str = REFERENCE_MODEL,
 ) -> Outcome:
     """``ok`` is False for anything a delivery should look at."""
     task_toml = bundle / "task.toml"
     if not task_toml.is_file():
         return Outcome(False, "no task.toml", None)
 
-    found = len(run_results(bundle))
-    runs = scored_runs(bundle)
-    if not runs:
-        return Outcome(False, f"no scored run ({found} result.json found)", None)
+    results = run_results(bundle)
+    found = sum(1 for path in results if model_of(path) == model)
+    if not found:
+        others = sorted({model_of(path) for path in results})
+        seen = f", found {', '.join(others)}" if others else ""
+        return Outcome(False, f"no {model} run{seen}", None)
 
-    partial = f"{len(runs)}/{found} runs scored"
-    if expect_runs is not None and len(runs) != expect_runs:
+    rates = [rate for _, run_model, rate in scored_runs(bundle) if run_model == model]
+    if not rates:
         return Outcome(
-            False, f"expected {expect_runs} scored runs, got {partial}", None
+            False, f"no scored {model} run ({found} result.json found)", None
         )
 
-    pass_rate = max(rate for _, rate in runs)
-    difficulty = map_difficulty(pass_rate)
-    complete = len(runs) == found
-    detail = f"pass@{len(runs)} best={pass_rate:.4f}"
+    if expect_runs is not None and len(rates) != expect_runs:
+        return Outcome(
+            False,
+            f"expected {expect_runs} scored {model} runs, got {len(rates)}",
+            None,
+        )
+
+    band = map_difficulty(mean(rates))
+    complete = len(rates) == found
+    detail = f"{model}: mean={mean(rates):.4f} n={len(rates)} -> {band}"
+    ignored = sorted({model_of(path) for path in results} - {model})
+    if ignored:
+        detail += f" (ignored {', '.join(ignored)})"
     if not complete:
-        detail += f" [PARTIAL {partial}]"
+        detail += f" [PARTIAL {len(rates)}/{found} runs scored]"
 
     if preflight:
-        current = _current_difficulty(task_toml)
-        change = "unchanged" if current == difficulty else f"{current} -> {difficulty}"
-        return Outcome(
-            complete, f"would set {difficulty} ({change}; {detail})", difficulty
-        )
+        return Outcome(complete, f"would set {detail}", band)
 
-    changed = write_difficulty(task_toml, difficulty)
+    changed = write_difficulty(task_toml, band)
     verb = "set" if changed else "already"
-    return Outcome(complete, f"{verb} {difficulty} ({detail})", difficulty)
+    return Outcome(complete, f"{verb} {detail}", band)
 
 
 def mix_report(counts: Counter[str]) -> tuple[bool, list[str]]:
@@ -149,16 +189,16 @@ def mix_report(counts: Counter[str]) -> tuple[bool, list[str]]:
     return within, lines
 
 
-def _current_difficulty(task_toml: Path) -> str:
-    match = _DIFFICULTY_RE.search(task_toml.read_text(encoding="utf-8"))
-    return match.group(0).split('"')[1] if match else "<missing>"
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("bundle_dirs", nargs="+", type=Path)
+    parser.add_argument(
+        "--model",
+        default=REFERENCE_MODEL,
+        help=f"reference model whose runs define the tier (default {REFERENCE_MODEL})",
+    )
     parser.add_argument(
         "--preflight",
         action="store_true",
@@ -168,12 +208,15 @@ def main() -> int:
         "--expect-runs",
         type=int,
         metavar="N",
-        help="refuse any bundle without exactly N scored runs (1 = pass@1, 8 = pass@8)",
+        help="refuse any bundle without exactly N scored reference runs "
+        "(1 = pass@1, 8 = pass@8)",
     )
     parser.add_argument(
         "--enforce-mix",
         action="store_true",
-        help=f"fail when any tier is more than {MIX_TOLERANCE:.0%} off the target mix",
+        # argparse %-expands help text, so the literal sign must be doubled.
+        help=f"fail when any tier is more than {MIX_TOLERANCE * 100:.0f}%% "
+        "off the target mix",
     )
     args = parser.parse_args()
 
@@ -181,12 +224,15 @@ def main() -> int:
     counts: Counter[str] = Counter()
     for bundle in args.bundle_dirs:
         result = backfill_bundle(
-            bundle, preflight=args.preflight, expect_runs=args.expect_runs
+            bundle,
+            preflight=args.preflight,
+            expect_runs=args.expect_runs,
+            model=args.model,
         )
         if not result.ok:
             flagged += 1
         if result.difficulty is not None:
-            counts[result.difficulty] += 1
+            counts.update([result.difficulty])
         print(f"{'  ' if result.ok else '! '}{bundle.name}: {result.message}")
 
     within, lines = mix_report(counts)

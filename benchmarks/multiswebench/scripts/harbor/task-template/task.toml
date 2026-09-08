@@ -15,7 +15,7 @@ authors = [
 keywords = ["{language}", "issue-resolving", "{repo_name}"]
 
 [metadata]
-difficulty = "{difficulty}"
+difficulty = "unbanded"
 category = "{category}"
 
 [verifier]
