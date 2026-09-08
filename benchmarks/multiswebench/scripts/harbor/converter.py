@@ -833,6 +833,23 @@ def build_problem_statement(resolved_issues: Any, max_chars: int | None = None) 
     return text
 
 
+def derive_n_episodes(history: list[dict[str, Any]]) -> int:
+    """Count agent iterations, which is the unit ``max_turns`` budgets.
+
+    One LLM response can emit several tool calls, and history carries an
+    observation per action, so ``len(history)`` runs about twice the iteration
+    count and reads as a turn-ceiling breach to downstream admissibility checks.
+    """
+    responses = {
+        entry.get("llm_response_id")
+        for entry in history
+        if entry.get("kind") == "ActionEvent" and entry.get("llm_response_id")
+    }
+    if responses:
+        return len(responses)
+    return sum(1 for entry in history if entry.get("kind") == "ActionEvent")
+
+
 def derive_api_request_times_msec(history: list[dict[str, Any]]) -> list[float]:
     timestamps: list[datetime] = []
     for entry in history:
@@ -1511,7 +1528,6 @@ def build_task(
     resources = get_resource_config(language, repo_name)
     verifier_timeout = 7200.0
     agent_timeout = verifier_timeout * 2
-    difficulty = map_difficulty(record.get("reference_pass_rate"))
     category = classify_category(
         {
             "title": title,
@@ -1527,7 +1543,6 @@ def build_task(
         language=language.lower(),
         repo_name=repo_name,
         category=category,
-        difficulty=difficulty,
         verifier_timeout=f"{verifier_timeout}",
         agent_timeout=f"{agent_timeout}",
         build_timeout_sec=f"{resources['build_timeout_sec']}",
@@ -1903,7 +1918,7 @@ def build_trajectory(
         "metadata": None
         if is_oracle
         else {
-            "n_episodes": len(history),
+            "n_episodes": derive_n_episodes(history),
             "api_request_times_msec": api_request_times_msec,
             "summarization_count": 0,
         },
