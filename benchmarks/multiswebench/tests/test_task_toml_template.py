@@ -71,10 +71,6 @@ def test_task_uuid_v5_template_preserved() -> None:
 
 
 TEAM_AUTHOR_EMAILS = [
-    "suryansh@ethara.ai",
-    "sarvex@ethara.ai",
-    "gurpreet.singh2037@ethara.ai",
-    "prafful.gupta@ethara.ai",
     "gautam.dubey@ethara.ai",
     "prakhar.singh@ethara.ai",
     "abhishek.verma@ethara.ai",
