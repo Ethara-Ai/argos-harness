@@ -246,7 +246,10 @@ def cmd_quality_judge(args: argparse.Namespace) -> int:
         for item in pending:
             evidence, question = build_prompt_parts(item, packet)
             try:
-                raw, err = call_with_backoff(
+                # call_with_backoff returns (raw, err, spent) -- judge.py:548.
+                # The quality verdict record carries no usage field, so the
+                # spend dict is dropped here rather than widening the schema.
+                raw, err, _spent = call_with_backoff(
                     seat.endpoint,
                     seat.model,
                     QUALITY_SYSTEM,
