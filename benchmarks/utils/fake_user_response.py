@@ -10,9 +10,11 @@ a fake user response to keep the agent working on the task.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Callable
 
 from openhands.sdk import get_logger
+from openhands.sdk.conversation.impl.remote_conversation import RemoteConversation
 from openhands.sdk.conversation.state import ConversationExecutionStatus
 from openhands.sdk.event import ActionEvent, Event, MessageEvent
 from openhands.sdk.tool.builtins.finish import FinishAction
@@ -141,9 +143,17 @@ def run_conversation_with_fake_user_response(
 
     fake_response_count = 0
 
+    # Default matches Evaluator.instance_timeout; RemoteConversation.run()
+    # would otherwise cap at 3600s and kill slow runs before that budget.
+    # Base/LocalConversation.run() accept no timeout, hence the isinstance guard.
+    run_timeout = int(os.getenv("CONVERSATION_TIMEOUT", str(4 * 60 * 60)))
+
     while True:
         # Run the conversation
-        conversation.run()
+        if isinstance(conversation, RemoteConversation):
+            conversation.run(timeout=run_timeout)
+        else:
+            conversation.run()
 
         # Check the execution status
         status = conversation.state.execution_status
