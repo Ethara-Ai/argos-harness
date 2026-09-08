@@ -682,6 +682,7 @@ def cmd_score(args) -> int:
             f"\nwrote process artifacts into {len(reports)} run directories "
             f"({wrote} result.json updated, {pruned} stale artifacts pruned)"
         )
+        print(_autoband_difficulty(task))
 
     if args.out:
         Path(args.out).write_text(
@@ -689,6 +690,58 @@ def cmd_score(args) -> int:
         )
         print(f"wrote {args.out}")
     return 1 if unjudged else 0
+
+
+def _autoband_difficulty(task: TaskBundle) -> str:
+    """Band task.toml once every run is judged *and* its score published.
+
+    Banding early would read a mean taken over whichever runs happened to
+    finish first, so a task still mid-rollout is left alone rather than
+    labelled from a partial set.
+
+    The two checks are not redundant. final_score.md proves the run was
+    judged; score_eval in result.json is the number the band is actually
+    taken from, and a run can have the first without the second -- the
+    publisher writes nothing when a run has no composition, when result.json
+    is absent or unreadable, or when score_eval itself is None. Gating on the
+    verdict alone would band from the survivors and, because a missing run can
+    only ever have raised the mean, ship a tier that is too hard.
+    """
+    runs = sorted(task.trajectories_dir.glob("*/run_*"))
+    if not runs:
+        return "difficulty: no runs to band"
+    unjudged = [r for r in runs if not (r / "verifier" / "final_score.md").is_file()]
+    if unjudged:
+        return (
+            f"difficulty: not banded, {len(unjudged)}/{len(runs)} run(s) "
+            "still without final_score.md"
+        )
+
+    # converter drags in the harbor/modal stack, so it is imported only on the
+    # pass that actually bands rather than on every assay invocation.
+    from benchmarks.multiswebench.scripts.harbor.backfill_difficulty import (
+        REFERENCE_MODEL,
+        backfill_bundle,
+        read_pass_rate,
+    )
+
+    unpublished = [r for r in runs if read_pass_rate(r / "result.json") is None]
+    if unpublished:
+        return (
+            f"difficulty: not banded, {len(unpublished)}/{len(runs)} run(s) "
+            "judged but without score_eval in result.json"
+        )
+
+    reference = [r for r in runs if r.parent.name == REFERENCE_MODEL]
+    if not reference:
+        seen = ", ".join(sorted({r.parent.name for r in runs}))
+        return f"difficulty: not banded, no {REFERENCE_MODEL} run (found {seen})"
+
+    try:
+        outcome = backfill_bundle(task.root, expect_runs=len(reference))
+    except (OSError, ValueError) as exc:
+        return f"difficulty: not banded ({exc})"
+    return f"difficulty: {outcome.message}"
 
 
 def _replay_rubric(
