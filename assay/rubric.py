@@ -349,7 +349,10 @@ _VERDICT_RE = re.compile(
     r"\[\[\s*RATIONALE\s*:\s*(?P<rationale>.*?)\]\].*?"
     r"\[\[\s*SATISFIED\s*:\s*(?P<satisfied>Yes|No)\s*\]\]"
     r"(?:.*?\[\[\s*TRUNCATION_AFFECTED\s*:\s*(?P<trunc>Yes|No)\s*\]\])?"
-    r"(?:.*?\[\[\s*EVIDENCE\s*:\s*(?P<ev>.*?)\]\])?",
+    # The judge intermittently closes EVIDENCE with "]" instead of "]]"; since
+    # the group is optional that silently meant ABSTAIN_UNCITED. A lone "]" is
+    # accepted only at \Z, where no following field can be swallowed.
+    r"(?:.*?\[\[\s*EVIDENCE\s*:\s*(?P<ev>.*?)(?:\]\]|\]\s*\Z))?",
     re.DOTALL | re.IGNORECASE,
 )
 
