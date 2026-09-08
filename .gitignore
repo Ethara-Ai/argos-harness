@@ -260,3 +260,6 @@ watch_eval.py
 # Root-anchored: tests/fixtures/argos_bundles IS committed. The old
 /argos_bundles/
 /argos_bundles*/
+# Dated raw-dataset dumps and sample bundles (deliverables, not source)
+dataset_*/
+/Samples/
