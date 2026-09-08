@@ -1139,30 +1139,43 @@ print(d.get('org',''), d.get('repo',''), d.get('number',''), d['uuid'])
 import json, os, glob
 from collections import defaultdict
 run_base = os.environ["RUN_BASE"]; k = int(os.environ["K"])
-instance_results = defaultdict(list); run_summaries = []; total_instances_set = set()
+# Instance identity and resolution both come from the run-level
+# output.report.json. The per-instance eval_files/**/report.json is a DIFFERENT
+# schema (org/repo/number/valid/...) with neither an "instance_id" nor a
+# "resolved" key, so reading it with .get() fallbacks silently produced a unique
+# id per run (the file path) and resolved=False every time -- pinning pass_at_k
+# to 0.0 for every dataset regardless of the real result.
+instance_pass = {}; run_summaries = []; runs_reported = 0; resolved_runs = 0
 for run_idx in range(1, k + 1):
     rp = os.path.join(run_base, f"run_{run_idx}", "output.report.json")
     if not os.path.exists(rp):
         run_summaries.append({"run": run_idx, "status": "missing"}); continue
     with open(rp) as f: report = json.load(f)
+    # A run that errored carries no measurement; counting it would understate
+    # the pass rate exactly like a missing run.
+    if report.get("error_instances") or report.get("incomplete_instances"):
+        run_summaries.append({"run": run_idx, "status": "error"}); continue
+    runs_reported += 1
+    resolved_runs += report.get("resolved_instances", 0)
     run_summaries.append({"run": run_idx, "status": "ok",
                           "resolved": report.get("resolved_instances", 0),
                           "total": report.get("total_instances", 0)})
-    workdir = os.path.join(run_base, f"run_{run_idx}", "eval_files", "workdir")
-    if os.path.isdir(workdir):
-        for rf in glob.glob(os.path.join(workdir, "**/report.json"), recursive=True):
-            try:
-                with open(rf) as fh: ir = json.load(fh)
-                iid = ir.get("instance_id", rf)
-                total_instances_set.add(iid)
-                instance_results[iid].append(ir.get("resolved", False))
-            except Exception: pass
-passed = sum(1 for v in instance_results.values() if any(v))
-total_i = len(total_instances_set) or max((s.get("total", 0) for s in run_summaries if s.get("status") == "ok"), default=0)
+    for iid in report.get("submitted_ids", []): instance_pass.setdefault(iid, False)
+    for iid in report.get("resolved_ids", []): instance_pass[iid] = True
+total_i = len(instance_pass)
+passed = sum(1 for v in instance_pass.values() if v)
 pass_k = passed / total_i if total_i > 0 else 0.0
-summary = {"metric": f"pass@{k}", "k": k, "language": os.environ["DLANG"], "model": os.environ["MS"],
+# pass_at_k is "solved in ANY run" (the pass@k definition). Difficulty banding
+# needs the pass RATE -- resolved runs / reported runs -- so emit both, and
+# state how many runs actually reported so a partial set is never read as k.
+pass_rate = resolved_runs / runs_reported if runs_reported else 0.0
+summary = {"metric": f"pass@{k}", "k": k, "runs_reported": runs_reported,
+           "complete": runs_reported == k,
+           "language": os.environ["DLANG"], "model": os.environ["MS"],
            "dataset": os.environ["DT"], "total_instances": total_i,
-           "instances_with_any_pass": passed, "pass_at_k": round(pass_k, 4), "per_run": run_summaries}
+           "instances_with_any_pass": passed, "pass_at_k": round(pass_k, 4),
+           "resolved_runs": resolved_runs, "pass_rate": round(pass_rate, 4),
+           "per_run": run_summaries}
 with open(os.environ["SF"], "w") as f: json.dump(summary, f, indent=2)
 PYSCRIPT
         if [[ -f "$SUMMARY_FILE" ]]; then
