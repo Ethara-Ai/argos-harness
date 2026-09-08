@@ -399,6 +399,102 @@ Any single file ≥ 100 MiB is dropped from the staged copy (GitHub's hard file-
 > `run_eval.sh` / `run_custom_eval.sh`. Renaming them in documentation alone
 > would break every command above.
 
+### Task difficulty
+
+Each bundle declares its tier as a single `difficulty` key in `task.toml`:
+
+```toml
+[metadata]
+difficulty = "expert"
+category = "bug_fixing"
+```
+
+Difficulty is **measured, not authored**: it is the reference model's pass rate
+under the sealed-environment protocol, so it cannot be known when the bundle is
+built. Conversion seeds `difficulty = "unbanded"` and the scoring pass replaces
+it once the rollout has been scored.
+
+**The reference model is `opus-5`.** A bundle may carry runs by other models for
+comparison, but they do not move the shipped tier — they are skipped and
+reported as `(ignored glm-5.3)`. Override with `--model` if you need to band
+against a different one.
+
+| Mean `score_eval` | Tier |
+| --- | --- |
+| < 0.25 | `expert` |
+| 0.25 – 0.375 | `hard` |
+| 0.375 – 0.50 | `medium` |
+| 0.50 – 0.875 | `easy` |
+| ≥ 0.875 | `trivial` |
+
+The band is the **mean** `score_eval` across the reference model's runs, not a
+count of solved attempts. The cut points were drawn for a pass rate, so a
+mean-based band reads one tier harder than a pass-count band would.
+
+`trivial` is a real tier, not a filter: a task the reference model solves almost
+every time is still labelled, and delivery decides separately whether to ship it
+(the target mix is 0% trivial, 10% easy, 30% medium, 40% hard, 20% expert,
+within a 5% tolerance).
+
+#### When it gets filled in
+
+Banding is automatic. `assay score --write` bands the bundle at the end of the
+pass, and because `run_eval.sh` scores with `--delivery "$ARGOS_DEST"`, it
+rewrites the **delivered** `argos_bundles/<uuid>/task.toml` in place — exporting
+the bundle before scoring it does not freeze the tier.
+
+It fills in once, when the rollout is complete. Four conditions must hold:
+
+- `RUBRIC_ENABLE=1` — the whole export → author → judge → score stage is gated on
+  it. Runs launched without it leave every bundle at `unbanded`.
+- The chain must fully succeed. Each step is gated on the previous one's exit
+  code, so a failed `author-milo` or `judge` means `score` never runs. A
+  `rubric: WARN export/author/judge/score exit N` line in the log means no
+  banding happened.
+- **Every** run must be both **judged and published**. `verifier/final_score.md`
+  proves the run was judged; `score_eval` in its `result.json` is the number the
+  band is actually taken from, and a run can have the first without the second —
+  the publisher writes nothing when a run has no composition, when `result.json`
+  is missing or unreadable, or when `score_eval` is `None`. Both are required,
+  and an incomplete pass reports and writes nothing:
+
+  ```
+  difficulty: not banded, 1/8 run(s) still without final_score.md
+  difficulty: not banded, 1/8 run(s) judged but without score_eval in result.json
+  ```
+
+  Gating on the verdict alone would band from the runs that happened to publish,
+  and since a missing run can only ever have raised the mean, that ships a tier
+  that is too hard.
+- Runs by other models in the same bundle also gate it, even though they do not
+  affect the value.
+
+#### Manual catch-up
+
+For bundles already on disk — e.g. a rollout launched with `RUBRIC_ENABLE=0` —
+band them directly:
+
+```bash
+# report what would change, and write nothing
+uv run python -m benchmarks.multiswebench.scripts.harbor.backfill_difficulty \
+    argos_bundles/<uuid> --preflight
+
+# band for real, refusing any bundle that is not a complete pass@8
+uv run python -m benchmarks.multiswebench.scripts.harbor.backfill_difficulty \
+    argos_bundles/*/ --expect-runs 8
+```
+
+Re-running is idempotent, and it migrates older bundles: the legacy per-model
+`difficulty_opus5` / `difficulty_glm53` keys are dropped in favour of the single
+`difficulty` key.
+
+Always `--preflight` first. A bundle whose runs did not all score still bands,
+from the ones that did, and a missing run can only ever have raised the mean —
+so a partial pass@8 silently labels the task *harder* than it is. `--expect-runs`
+turns that into a refusal instead of a wrong tier. The run also prints the batch
+distribution against the target mix; `--enforce-mix` fails when any tier is more
+than 5% off.
+
 ## Rich Logging
 
 Enable enhanced console output with color-coded, structured logs:
